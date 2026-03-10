@@ -1,0 +1,32 @@
+name: crystal-pdf
+version: 0.1.0
+
+description: |
+  A pure Crystal library for PDF generation with AsciiDoc-to-PDF conversion.
+  Combines a low-level PDF engine (ported from Prawn) with a high-level
+  AsciiDoc converter (ported from asciidoctor-pdf).
+
+authors:
+  - Chris Watson <cawatson1993@gmail.com>
+  - aloli
+
+crystal: ">= 1.10.0"
+
+license: MIT
+
+dependencies:
+  stumpy_png:
+    github: stumpycr/stumpy_png
+    version: "~> 5.0"
+  stumpy_jpeg:
+    github: stumpycr/stumpy_jpeg
+    branch: master
+
+development_dependencies:
+  ameba:
+    github: crystal-ameba/ameba
+    version: "~> 1.6"
+
+targets:
+  asciidoc-to-pdf:
+    main: src/cli.cr
