@@ -144,6 +144,17 @@ module AsciidocPDF
     property footnote_margin_top : Float64 = 8.0
     property footnote_line_height : Float64 = 1.3
 
+    # ----- Syntax Highlighting -----
+    property syntax_highlight_enabled : Bool = true
+    property syntax_keyword_color : Tuple(Float64, Float64, Float64) = {0.0, 0.0, 0.7}    # blue
+    property syntax_string_color : Tuple(Float64, Float64, Float64) = {0.0, 0.5, 0.0}     # green
+    property syntax_comment_color : Tuple(Float64, Float64, Float64) = {0.5, 0.5, 0.5}    # grey
+    property syntax_number_color : Tuple(Float64, Float64, Float64) = {0.6, 0.0, 0.0}     # dark red
+    property syntax_identifier_color : Tuple(Float64, Float64, Float64) = {0.0, 0.0, 0.0} # black
+    property syntax_punctuation_color : Tuple(Float64, Float64, Float64) = {0.3, 0.3, 0.3} # dark grey
+    property syntax_plain_color : Tuple(Float64, Float64, Float64) = {0.0, 0.0, 0.0}      # black
+    property syntax_error_color : Tuple(Float64, Float64, Float64) = {0.8, 0.0, 0.0}      # red
+
     # ----- TOC -----
     property toc_title : String = "Table of Contents"
     property toc_font_size : Float64 = 10.5
