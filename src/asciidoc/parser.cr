@@ -22,10 +22,42 @@ module AsciiDoc
     @lines : Array(String)
     @pos : Int32 = 0
     @document : Document
+    @base_dir : String
+    @included_files : Set(String)
 
-    def initialize(source : String)
-      @lines = source.lines
+    def initialize(source : String, base_dir : String = Dir.current, included_files : Set(String) = Set(String).new)
+      @lines = resolve_includes(source.lines, base_dir, included_files)
       @document = Document.new
+      @base_dir = base_dir
+      @included_files = included_files
+    end
+
+    # Resolves include:: directives by substituting file contents inline.
+    # Detects circular inclusions and raises an error.
+    private def resolve_includes(lines : Array(String), base_dir : String, included_files : Set(String)) : Array(String)
+      result = [] of String
+      lines.each do |line|
+        if match = line.match(/^include::([^\[]+)\[([^\]]*)\]/)
+          path = match[1].strip
+          # Resolve relative path against base_dir
+          full_path = File.expand_path(path, base_dir)
+          if included_files.includes?(full_path)
+            raise "Circular include detected: #{full_path}"
+          end
+          unless File.exists?(full_path)
+            raise File::NotFoundError.new("Include file not found: #{full_path}", file: full_path)
+          end
+          child_included = included_files.dup
+          child_included.add(full_path)
+          child_base = File.dirname(full_path)
+          child_lines = File.read(full_path).lines
+          resolved = resolve_includes(child_lines, child_base, child_included)
+          result.concat(resolved)
+        else
+          result << line
+        end
+      end
+      result
     end
 
     # Parses the source and returns the Document AST.
