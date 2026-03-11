@@ -407,21 +407,64 @@ module AsciidocPDF
 
       # Code text
       page.font(@theme.code_font_family, size: @theme.code_font_size)
-      r, g, b = @theme.code_font_color
-      page.fill_color(r, g, b)
 
       text_x = content_left + @theme.code_padding
       text_y = @cursor_y - @theme.code_padding - @theme.code_font_size
 
-      lines.each do |line|
-        page.text(line, at: {text_x, text_y})
-        text_y -= line_height
+      lang = block.language
+      if @theme.syntax_highlight_enabled && !lang.empty?
+        # Tokenise each line and render with per-token colours
+        lines.each do |line|
+          render_highlighted_line(line, lang, text_x, text_y)
+          text_y -= line_height
+        end
+      else
+        # Plain monochrome rendering
+        r, g, b = @theme.code_font_color
+        page.fill_color(r, g, b)
+        lines.each do |line|
+          page.text(line, at: {text_x, text_y})
+          text_y -= line_height
+        end
       end
 
       move_down(box_height + @theme.paragraph_margin_bottom)
 
       # Reset font
       page.font(@theme.base_font_family, size: @theme.base_font_size)
+    end
+
+    # Renders a single line of source code with syntax-highlighted tokens.
+    #
+    # Each token is drawn at the current x position using the colour that
+    # corresponds to its `TokenType`.  The x cursor advances by the token
+    # width after every token so that tokens are laid out inline.
+    private def render_highlighted_line(line : String, lang : String, base_x : Float64, y : Float64) : Nil
+      tokens = SyntaxHighlighter.highlight(line, lang)
+      x = base_x
+      tokens.each do |token|
+        r, g, b = token_color(token.type)
+        page.fill_color(r, g, b)
+        page.text(token.value, at: {x, y})
+        # Advance x by an approximation of the token width.
+        # Courier is a fixed-width font: each character is ~0.6 × font_size wide.
+        x += token.value.size * @theme.code_font_size * 0.6
+      end
+    end
+
+    # Maps a `SyntaxHighlighter::TokenType` to an RGB colour from the theme.
+    private def token_color(type : SyntaxHighlighter::TokenType) : Tuple(Float64, Float64, Float64)
+      case type
+      in SyntaxHighlighter::TokenType::KEYWORD     then @theme.syntax_keyword_color
+      in SyntaxHighlighter::TokenType::STRING      then @theme.syntax_string_color
+      in SyntaxHighlighter::TokenType::COMMENT     then @theme.syntax_comment_color
+      in SyntaxHighlighter::TokenType::NUMBER      then @theme.syntax_number_color
+      in SyntaxHighlighter::TokenType::IDENTIFIER  then @theme.syntax_identifier_color
+      in SyntaxHighlighter::TokenType::PUNCTUATION then @theme.syntax_punctuation_color
+      in SyntaxHighlighter::TokenType::PLAIN       then @theme.syntax_plain_color
+      in SyntaxHighlighter::TokenType::WHITESPACE  then @theme.syntax_plain_color
+      in SyntaxHighlighter::TokenType::ERROR       then @theme.syntax_error_color
+      end
     end
 
     private def render_literal(block : AsciiDoc::Block) : Nil
