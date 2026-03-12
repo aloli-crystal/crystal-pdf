@@ -19,6 +19,13 @@ module AsciidocPDF
     @page_number : Int32 = 0
     @toc_entries : Array(TocEntry) = [] of TocEntry
 
+    # Footnote counter: incremented globally across the whole document.
+    getter footnote_counter : Int32 = 0
+
+    # Footnotes collected for the current page (index, text).
+    # Exposed for testing; cleared after each page flush.
+    getter page_footnotes : Array(Tuple(Int32, String)) = [] of Tuple(Int32, String)
+
     record TocEntry,
       title : String,
       level : Int32,
@@ -57,6 +64,9 @@ module AsciidocPDF
         render_toc
       end
 
+      # Flush any footnotes remaining on the last page.
+      flush_page_footnotes if @current_page
+
       # Render headers and footers
       render_headers_footers(ast)
     end
@@ -76,6 +86,9 @@ module AsciidocPDF
     # ----- Page Management -----
 
     private def new_page : Nil
+      # Flush footnotes accumulated on the current page before moving on.
+      flush_page_footnotes if @current_page
+
       @page_number += 1
       @document.page(width: @theme.page_width, height: @theme.page_height) do |page|
         @current_page = page
@@ -226,19 +239,45 @@ module AsciidocPDF
         font_color = @theme.lead_font_color
       end
 
-      # Parse inline markup
+      # Parse inline markup (may include footnote fragments with index=-1)
       fragments = AsciiDoc::Parser.parse_inline(para.text)
+
+      # Assign sequential indices to footnote fragments and collect them.
+      fragments = fragments.map do |frag|
+        if frag.footnote_index == -1
+          @footnote_counter += 1
+          idx = @footnote_counter
+          @page_footnotes << {idx, frag.footnote_text}
+          AsciiDoc::InlineText.new(
+            text: frag.text,
+            bold: frag.bold,
+            italic: frag.italic,
+            mono: frag.mono,
+            link: frag.link,
+            role: frag.role,
+            footnote_index: idx,
+            footnote_text: frag.footnote_text
+          )
+        else
+          frag
+        end
+      end
 
       # Estimate height needed
       line_height = font_size * @theme.base_line_height
       estimated_lines = estimate_lines(para.text, font_size)
-      space_needed = estimated_lines * line_height
 
       ensure_space(line_height) # at least one line
 
       # Render each fragment
       x = content_left
       fragments.each do |frag|
+        # Footnote reference: render superscript index
+        if frag.footnote_index > 0
+          render_footnote_reference(frag.footnote_index, x, font_size, line_height)
+          next
+        end
+
         if frag.bold
           page.font(@theme.base_font_family, size: font_size)
           # Bold simulation: render twice with slight offset
@@ -779,6 +818,67 @@ module AsciidocPDF
 
         move_down(line_height)
       end
+    end
+
+    # ----- Footnotes -----
+
+    # Renders the footnote superscript reference inline (e.g. "[1]").
+    # The reference is rendered at the current cursor position on the same
+    # baseline as the surrounding text, using a smaller font size.
+    private def render_footnote_reference(index : Int32, x : Float64, font_size : Float64, line_height : Float64) : Nil
+      ref_text = "[#{index}]"
+      ref_size = (font_size * 0.7).round(1)
+      page.font(@theme.base_font_family, size: ref_size)
+      r, g, b = @theme.footnote_font_color
+      page.fill_color(r, g, b)
+      # Position slightly above the baseline (superscript effect)
+      page.text(ref_text, at: {x, @cursor_y - font_size + ref_size * 0.5})
+      # Restore base font
+      page.font(@theme.base_font_family, size: font_size)
+      r, g, b = @theme.base_font_color
+      page.fill_color(r, g, b)
+    end
+
+    # Renders all footnotes accumulated for the current page at the bottom
+    # of the page, preceded by a short separator line.
+    # Clears @page_footnotes afterwards.
+    private def flush_page_footnotes : Nil
+      return if @page_footnotes.empty?
+
+      footnotes = @page_footnotes.dup
+      @page_footnotes.clear
+
+      fn_size = @theme.footnote_font_size
+      fn_line_height = fn_size * @theme.footnote_line_height
+
+      # Calculate the total height needed for the footnote block.
+      total_height = @theme.footnote_margin_top + 4.0 + footnotes.size * fn_line_height
+
+      # Position the footnote block at the bottom of the current page.
+      fn_y = @theme.page_margin_bottom + total_height
+
+      # Separator line
+      r, g, b = @theme.footnote_separator_color
+      page.stroke_color(r, g, b)
+      page.line_width(@theme.footnote_separator_width)
+      page.move_to(content_left, fn_y)
+      page.line_to(content_left + @theme.footnote_separator_length, fn_y)
+      page.stroke
+
+      # Footnote entries
+      page.font(@theme.base_font_family, size: fn_size)
+      r, g, b = @theme.footnote_font_color
+      page.fill_color(r, g, b)
+
+      footnotes.each_with_index do |(idx, text), i|
+        entry_y = fn_y - @theme.footnote_margin_top - (i + 1) * fn_line_height
+        page.text("#{idx}. #{text}", at: {content_left, entry_y})
+      end
+
+      # Restore base font
+      page.font(@theme.base_font_family, size: @theme.base_font_size)
+      r, g, b = @theme.base_font_color
+      page.fill_color(r, g, b)
     end
 
     # ----- Headers & Footers -----

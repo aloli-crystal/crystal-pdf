@@ -250,6 +250,21 @@ module AsciiDoc
     end
   end
 
+  # A footnote reference embedded inline in a paragraph.
+  # The footnote text is stored here; the sequential index is assigned
+  # by the Converter when it collects all footnotes.
+  class Footnote < Node
+    # The footnote body text (may contain inline markup).
+    property text : String = ""
+
+    # Sequential index (1-based), assigned by the Converter.
+    property index : Int32 = 0
+
+    def node_type : String
+      "footnote"
+    end
+  end
+
   # Inline text with formatting.
   record InlineText,
     text : String,
@@ -257,5 +272,7 @@ module AsciiDoc
     italic : Bool = false,
     mono : Bool = false,
     link : String = "",
-    role : String = ""
+    role : String = "",
+    footnote_index : Int32 = 0,
+    footnote_text : String = ""
 end
