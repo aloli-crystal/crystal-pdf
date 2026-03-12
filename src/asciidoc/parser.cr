@@ -623,12 +623,51 @@ module AsciiDoc
     # ----- Inline Parsing -----
 
     # Parses inline markup in a text string into InlineText fragments.
+    # Footnotes are returned as fragments with footnote_index=-1 (index to be
+    # assigned later by the Converter) and footnote_text set.
     def self.parse_inline(text : String) : Array(InlineText)
       fragments = [] of InlineText
       remaining = text
       pos = 0
 
       while pos < remaining.size
+        # Footnote: footnote:[text]
+        if remaining[pos..].starts_with?("footnote:[") || remaining[pos..].starts_with?("footnoteref:[") 
+          macro_name = remaining[pos..].starts_with?("footnoteref:[") ? "footnoteref:" : "footnote:"
+          macro_start = pos + macro_name.size
+          # Find the matching closing bracket (handle nested brackets)
+          bracket_depth = 0
+          bracket_end = -1
+          i = macro_start
+          while i < remaining.size
+            if remaining[i] == '['
+              bracket_depth += 1
+            elsif remaining[i] == ']'
+              bracket_depth -= 1
+              if bracket_depth == 0
+                bracket_end = i
+                break
+              end
+            end
+            i += 1
+          end
+          if bracket_end > macro_start
+            footnote_text = remaining[macro_start + 1...bracket_end]
+            if pos > 0
+              fragments << InlineText.new(text: remaining[0...pos])
+            end
+            # footnote_index = -1 signals "to be assigned by Converter"
+            fragments << InlineText.new(
+              text: "",
+              footnote_index: -1,
+              footnote_text: footnote_text
+            )
+            remaining = remaining[bracket_end + 1..]
+            pos = 0
+            next
+          end
+        end
+
         # Bold: *text* or **text**
         if remaining[pos..].starts_with?("**")
           end_pos = remaining.index("**", pos + 2)
