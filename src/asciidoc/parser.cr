@@ -82,7 +82,7 @@ module AsciiDoc
       # Author line (immediately after title, no blank line)
       if current_line? && !current_line.empty? && !current_line.starts_with?(":")
         author_line = current_line.strip
-        if !author_line.starts_with?("=") && !author_line.starts_with?("[")
+        if !author_line.starts_with?("=") && !author_line.starts_with?("[") && !author_line.starts_with?("indexterm:")
           @document.author = author_line
           # Extract email if present: Author Name <email>
           if match = author_line.match(/<([^>]+)>/)
@@ -193,6 +193,18 @@ module AsciiDoc
           anchor.anchor_id = match[1].strip
           anchor.source_line = @pos + 1
           parent.add_child(anchor)
+          advance
+          next
+        end
+
+        # Index term on its own line: indexterm:[Primary] or indexterm:[Primary,Secondary]
+        if match = line.strip.match(/^indexterm:\[([^\]]+)\]$/)
+          parts = match[1].split(",", 2)
+          term = IndexTerm.new
+          term.primary = parts[0].strip
+          term.secondary = parts.size > 1 ? parts[1].strip : ""
+          term.source_line = @pos + 1
+          parent.add_child(term)
           advance
           next
         end
@@ -705,6 +717,47 @@ module AsciiDoc
               text: "",
               footnote_index: -1,
               footnote_text: footnote_text
+            )
+            remaining = remaining[bracket_end + 1..]
+            pos = 0
+            next
+          end
+        end
+
+        # Index term inline: indexterm:[Primary] or indexterm:[Primary,Secondary]
+        # Invisible in the rendered text but collected for the index.
+        if remaining[pos..].starts_with?("indexterm:[")
+          bracket_start = pos + "indexterm:".size
+          bracket_depth = 0
+          bracket_end = -1
+          i = bracket_start
+          while i < remaining.size
+            if remaining[i] == '['
+              bracket_depth += 1
+            elsif remaining[i] == ']'
+              bracket_depth -= 1
+              if bracket_depth == 0
+                bracket_end = i
+                break
+              end
+            end
+            i += 1
+          end
+          if bracket_end > bracket_start
+            term_content = remaining[bracket_start + 1...bracket_end]
+            parts = term_content.split(",", 2)
+            primary = parts[0].strip
+            secondary = parts.size > 1 ? parts[1].strip : ""
+            if pos > 0
+              fragments << InlineText.new(text: remaining[0...pos])
+            end
+            # Emit an invisible fragment carrying the index term metadata.
+            # index_term_primary is encoded in footnote_text with a special prefix
+            # so we don't need to change the InlineText record.
+            fragments << InlineText.new(
+              text: "",
+              footnote_index: -2,
+              footnote_text: "indexterm:#{primary}|#{secondary}"
             )
             remaining = remaining[bracket_end + 1..]
             pos = 0

@@ -71,6 +71,9 @@ require "./pdf/table"
 # SVG rendering engine
 require "./pdf/svg"
 
+# Syntax highlighting engine
+require "./pdf/syntax"
+
 # Document structure
 require "./pdf/document"
 require "./pdf/page"

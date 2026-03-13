@@ -290,6 +290,20 @@ module AsciiDoc
     end
   end
 
+  # An index term: indexterm:[Primary] or indexterm:[Primary,Secondary]
+  # Invisible in the text but collected for the index section.
+  class IndexTerm < Node
+    # Primary index term.
+    property primary : String = ""
+
+    # Optional secondary index term.
+    property secondary : String = ""
+
+    def node_type : String
+      "index_term"
+    end
+  end
+
   # Inline text with formatting.
   record InlineText,
     text : String,
