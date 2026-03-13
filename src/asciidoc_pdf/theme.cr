@@ -13,6 +13,17 @@ module AsciidocPDF
     property page_margin_bottom : Float64 = 72.0
     property page_margin_left : Float64 = 72.0
 
+    # ----- TrueType Font Paths -----
+    # When set, these paths override the font_family names and enable
+    # full Unicode support via embedded TrueType/OpenType fonts.
+    # Each path points to a .ttf or .otf file.
+    property base_font_path : String? = nil          # Normal variant
+    property base_font_bold_path : String? = nil     # Bold variant
+    property base_font_italic_path : String? = nil   # Italic variant
+    property base_font_bold_italic_path : String? = nil  # Bold+Italic variant
+    property heading_font_path : String? = nil       # Heading font
+    property code_font_path : String? = nil          # Monospace/code font
+
     # ----- Base Font -----
     property base_font_family : String = "Helvetica"
     property base_font_size : Float64 = 10.5
