@@ -50,6 +50,16 @@ module AsciidocPDF
         end
       end
 
+      # ----- TrueType Font Paths -----
+      if fonts = data["fonts"]?
+        theme.base_font_path = str(fonts["base"]?) if fonts["base"]?
+        theme.base_font_bold_path = str(fonts["base_bold"]?) if fonts["base_bold"]?
+        theme.base_font_italic_path = str(fonts["base_italic"]?) if fonts["base_italic"]?
+        theme.base_font_bold_italic_path = str(fonts["base_bold_italic"]?) if fonts["base_bold_italic"]?
+        theme.heading_font_path = str(fonts["heading"]?) if fonts["heading"]?
+        theme.code_font_path = str(fonts["code"]?) if fonts["code"]?
+      end
+
       # ----- Base Font -----
       if base = data["base"]?
         theme.base_font_family = str(base["font_family"]?) if base["font_family"]?
