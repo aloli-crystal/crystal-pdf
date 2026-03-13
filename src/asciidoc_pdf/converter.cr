@@ -31,6 +31,24 @@ module AsciidocPDF
       level : Int32,
       page_number : Int32
 
+    # Metadata tracked per page for header/footer rendering.
+    record PageMeta,
+      page_number : Int32,
+      section_title : String
+
+    # Per-page metadata collected during rendering.
+    @page_metas : Array(PageMeta) = [] of PageMeta
+    # Title of the section currently being rendered.
+    @current_section_title : String = ""
+
+    # Cross-reference resolution table.
+    # Maps anchor_id -> { page_number, display_text }
+    record AnchorDef,
+      page_number : Int32,
+      display_text : String
+
+    @anchor_table : Hash(String, AnchorDef) = {} of String => AnchorDef
+
     # Loaded TrueType fonts, keyed by role (:base, :base_bold, :base_italic,
     # :base_bold_italic, :heading, :code)
     @ttf_fonts : Hash(Symbol, PDF::Fonts::TrueTypeFont) = {} of Symbol => PDF::Fonts::TrueTypeFont
@@ -122,6 +140,10 @@ module AsciidocPDF
 
     # Converts an AsciiDoc AST to PDF.
     def convert(ast : AsciiDoc::Document) : Nil
+      # Pre-pass: collect all anchors and section IDs for cross-reference resolution.
+      # Page numbers are estimated at 1 for now; they will be updated during rendering.
+      collect_anchors(ast, 1)
+
       # Title page
       if @theme.title_page_enabled && !ast.title.empty?
         render_title_page(ast)
@@ -145,6 +167,46 @@ module AsciidocPDF
 
       # Render headers and footers
       render_headers_footers(ast)
+    end
+
+    # Pre-pass: walks the AST and registers all anchors and section IDs.
+    # Page numbers are approximate (updated during rendering via register_anchor).
+    private def collect_anchors(node : AsciiDoc::Node, page_num : Int32) : Nil
+      case node
+      when AsciiDoc::Section
+        unless node.id.empty?
+          @anchor_table[node.id] = AnchorDef.new(
+            page_number: page_num,
+            display_text: node.title
+          )
+        end
+      when AsciiDoc::Anchor
+        @anchor_table[node.anchor_id] = AnchorDef.new(
+          page_number: page_num,
+          display_text: node.anchor_id
+        )
+      end
+      node.children.each { |child| collect_anchors(child, page_num) }
+    end
+
+    # Updates the page number for an anchor at render time.
+    private def register_anchor(anchor_id : String, display_text : String = "") : Nil
+      @anchor_table[anchor_id] = AnchorDef.new(
+        page_number: @page_number,
+        display_text: display_text.empty? ? anchor_id : display_text
+      )
+    end
+
+    # Resolves a cross-reference to display text and page number.
+    # Returns {display_text, page_number} or {target, 0} if not found.
+    def resolve_cross_ref(target : String, display_override : String = "") : Tuple(String, Int32)
+      if anchor = @anchor_table[target]?
+        display = display_override.empty? ? anchor.display_text : display_override
+        {display, anchor.page_number}
+      else
+        display = display_override.empty? ? target : display_override
+        {display, 0}
+      end
     end
 
     # Writes the PDF to an IO.
@@ -171,6 +233,11 @@ module AsciidocPDF
         apply_base_font(page)
         @cursor_y = @theme.page_height - @theme.page_margin_top
       end
+      # Record metadata for this page (section title at the time of creation)
+      @page_metas << PageMeta.new(
+        page_number: @page_number,
+        section_title: @current_section_title
+      )
     end
 
     private def ensure_space(needed : Float64) : Nil
@@ -228,6 +295,12 @@ module AsciidocPDF
         new_page
       when AsciiDoc::ThematicBreak
         render_thematic_break
+      when AsciiDoc::Anchor
+        # Register anchor with accurate page number at render time
+        register_anchor(node.anchor_id)
+      when AsciiDoc::CrossRef
+        # Inline cross-refs are handled in paragraph rendering;
+        # block-level cross-refs (rare) are silently skipped here.
       when AsciiDoc::Toc
         # Handled separately after content
       else
@@ -276,6 +349,22 @@ module AsciidocPDF
 
       ensure_space(space_needed)
       move_down(@theme.heading_margin_top)
+
+      # Track current section title for header/footer
+      @current_section_title = section.title
+      # Update the metadata for the current page with the new section title
+      if !@page_metas.empty?
+        last = @page_metas.last
+        @page_metas[@page_metas.size - 1] = PageMeta.new(
+          page_number: last.page_number,
+          section_title: section.title
+        )
+      end
+
+      # Register anchor with accurate page number for cross-reference resolution
+      unless section.id.empty?
+        register_anchor(section.id, section.title)
+      end
 
       # Record TOC entry
       @toc_entries << TocEntry.new(
@@ -351,6 +440,20 @@ module AsciidocPDF
         # Footnote reference: render superscript index
         if frag.footnote_index > 0
           render_footnote_reference(frag.footnote_index, x, font_size, line_height)
+          next
+        end
+
+        # Cross-reference: render as coloured link text with page number
+        if !frag.cross_ref_target.empty?
+          display, ref_page = resolve_cross_ref(frag.cross_ref_target, frag.cross_ref_display)
+          ref_text = ref_page > 0 ? "#{display} (p. #{ref_page})" : display
+          apply_base_font(page, font_size)
+          r, g, b = @theme.link_font_color
+          page.fill_color(r, g, b)
+          render_wrapped_text(ref_text, x, font_size, line_height)
+          # Restore normal color for subsequent fragments
+          r, g, b = font_color
+          page.fill_color(r, g, b)
           next
         end
 
@@ -1003,10 +1106,130 @@ module AsciidocPDF
     # ----- Headers & Footers -----
 
     private def render_headers_footers(ast : AsciiDoc::Document) : Nil
-      # Headers and footers are added as overlays on existing pages
-      # This is a simplified implementation
-      # In a full implementation, we would use PDF annotations or
-      # re-render each page with header/footer content
+      total_pages = @page_number
+      doc_title = ast.title
+
+      @document.pages.each_with_index do |pg, idx|
+        page_num = idx + 1
+        meta = @page_metas.find { |m| m.page_number == page_num }
+        section_title = meta ? meta.section_title : ""
+
+        # Render header
+        if @theme.header_enabled
+          skip = @theme.header_skip_first_page && page_num == 1
+          unless skip
+            render_header_on_page(pg, page_num, total_pages, doc_title, section_title)
+          end
+        end
+
+        # Render footer
+        if @theme.footer_enabled
+          skip = @theme.footer_skip_first_page && page_num == 1
+          unless skip
+            render_footer_on_page(pg, page_num, total_pages, doc_title, section_title)
+          end
+        end
+      end
+    end
+
+    # Renders the header band on a given page.
+    private def render_header_on_page(pg : PDF::Page, page_num : Int32, total_pages : Int32,
+                                       doc_title : String, section_title : String) : Nil
+      h = @theme.header_height
+      y_top = @theme.page_height - h
+      y_text = y_top + h * 0.4  # vertical center of band
+
+      apply_base_font(pg, @theme.header_font_size)
+      r, g, b = @theme.header_font_color
+      pg.fill_color(r, g, b)
+
+      # Border line at bottom of header band
+      r2, g2, b2 = @theme.header_border_color
+      pg.stroke_color(r2, g2, b2)
+      pg.line_width(@theme.header_border_width)
+      pg.move_to(@theme.page_margin_left, y_top)
+      pg.line_to(@theme.page_width - @theme.page_margin_right, y_top)
+      pg.stroke
+
+      # Restore fill color
+      r, g, b = @theme.header_font_color
+      pg.fill_color(r, g, b)
+
+      # Left slot
+      left_text = resolve_tokens(@theme.header_left, page_num, total_pages, doc_title, section_title)
+      pg.text(left_text, at: {@theme.page_margin_left, y_text}) unless left_text.empty?
+
+      # Center slot
+      center_text = resolve_tokens(@theme.header_center, page_num, total_pages, doc_title, section_title)
+      unless center_text.empty?
+        center_x = @theme.page_width / 2.0 - (center_text.size * @theme.header_font_size * 0.3)
+        pg.text(center_text, at: {center_x, y_text})
+      end
+
+      # Right slot
+      right_text = resolve_tokens(@theme.header_right, page_num, total_pages, doc_title, section_title)
+      unless right_text.empty?
+        right_x = @theme.page_width - @theme.page_margin_right - (right_text.size * @theme.header_font_size * 0.5)
+        pg.text(right_text, at: {right_x, y_text})
+      end
+    end
+
+    # Renders the footer band on a given page.
+    private def render_footer_on_page(pg : PDF::Page, page_num : Int32, total_pages : Int32,
+                                       doc_title : String, section_title : String) : Nil
+      h = @theme.footer_height
+      y_bottom = @theme.page_margin_bottom
+      y_text = y_bottom - h * 0.6  # below margin
+
+      apply_base_font(pg, @theme.footer_font_size)
+      r, g, b = @theme.footer_font_color
+      pg.fill_color(r, g, b)
+
+      # Border line at top of footer band
+      r2, g2, b2 = @theme.footer_border_color
+      pg.stroke_color(r2, g2, b2)
+      pg.line_width(@theme.footer_border_width)
+      pg.move_to(@theme.page_margin_left, y_bottom)
+      pg.line_to(@theme.page_width - @theme.page_margin_right, y_bottom)
+      pg.stroke
+
+      # Restore fill color
+      r, g, b = @theme.footer_font_color
+      pg.fill_color(r, g, b)
+
+      # Left slot
+      left_text = resolve_tokens(@theme.footer_left, page_num, total_pages, doc_title, section_title)
+      pg.text(left_text, at: {@theme.page_margin_left, y_text}) unless left_text.empty?
+
+      # Center slot
+      center_text = resolve_tokens(@theme.footer_center, page_num, total_pages, doc_title, section_title)
+      unless center_text.empty?
+        center_x = @theme.page_width / 2.0 - (center_text.size * @theme.footer_font_size * 0.3)
+        pg.text(center_text, at: {center_x, y_text})
+      end
+
+      # Right slot
+      right_text = resolve_tokens(@theme.footer_right, page_num, total_pages, doc_title, section_title)
+      unless right_text.empty?
+        right_x = @theme.page_width - @theme.page_margin_right - (right_text.size * @theme.footer_font_size * 0.5)
+        pg.text(right_text, at: {right_x, y_text})
+      end
+    end
+
+    # Resolves token placeholders in a header/footer content string.
+    #
+    # Supported tokens:
+    #   {page_number}    — current page number
+    #   {page_count}     — total number of pages
+    #   {document_title} — document title
+    #   {section_title}  — current section title
+    private def resolve_tokens(template : String, page_num : Int32, total_pages : Int32,
+                                doc_title : String, section_title : String) : String
+      template
+        .gsub("{page_number}", page_num.to_s)
+        .gsub("{page_count}", total_pages.to_s)
+        .gsub("{document_title}", doc_title)
+        .gsub("{section_title}", section_title)
     end
 
     # ----- Text Helpers -----

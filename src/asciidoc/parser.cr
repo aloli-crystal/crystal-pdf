@@ -187,6 +187,16 @@ module AsciiDoc
           next
         end
 
+        # Explicit anchor: [[anchor_id]] on its own line
+        if match = line.strip.match(/^\[\[([^\]]+)\]\]$/)
+          anchor = Anchor.new
+          anchor.anchor_id = match[1].strip
+          anchor.source_line = @pos + 1
+          parent.add_child(anchor)
+          advance
+          next
+        end
+
         # Block image
         if match = line.match(/^image::([^\[]+)\[([^\]]*)\]/)
           img = parse_block_image(match, block_attrs)
@@ -611,6 +621,8 @@ module AsciiDoc
 
       while current_line? && current_line.starts_with?("[")
         line = current_line.strip
+        # Skip double-bracket anchors [[...]] — handled by parse_body
+        break if line.match(/^\[\[[^\]]+\]\]$/)
         if line.ends_with?("]")
           content = line[1..-2]
 
@@ -760,6 +772,28 @@ module AsciiDoc
             end
             fragments << InlineText.new(text: remaining[pos + 1...end_pos], mono: true)
             remaining = remaining[end_pos + 1..]
+            pos = 0
+            next
+          end
+        end
+
+        # Cross-reference: <<anchor_id>> or <<anchor_id,display text>>
+        if remaining[pos..].starts_with?("<<")
+          end_pos = remaining.index(">>", pos + 2)
+          if end_pos
+            ref_content = remaining[pos + 2...end_pos]
+            parts = ref_content.split(",", 2)
+            target = parts[0].strip
+            display = parts.size > 1 ? parts[1].strip : ""
+            if pos > 0
+              fragments << InlineText.new(text: remaining[0...pos])
+            end
+            fragments << InlineText.new(
+              text: display.empty? ? target : display,
+              cross_ref_target: target,
+              cross_ref_display: display
+            )
+            remaining = remaining[end_pos + 2..]
             pos = 0
             next
           end
