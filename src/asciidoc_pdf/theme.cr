@@ -135,6 +135,15 @@ module AsciidocPDF
     property footer_border_width : Float64 = 0.5
     property footer_border_color : Tuple(Float64, Float64, Float64) = {0.8, 0.8, 0.8}
 
+    # ----- Footnotes -----
+    property footnote_font_size : Float64 = 8.0
+    property footnote_font_color : Tuple(Float64, Float64, Float64) = {0.3, 0.3, 0.3}
+    property footnote_separator_color : Tuple(Float64, Float64, Float64) = {0.7, 0.7, 0.7}
+    property footnote_separator_width : Float64 = 0.5
+    property footnote_separator_length : Float64 = 100.0
+    property footnote_margin_top : Float64 = 8.0
+    property footnote_line_height : Float64 = 1.3
+
     # ----- TOC -----
     property toc_title : String = "Table of Contents"
     property toc_font_size : Float64 = 10.5
