@@ -179,6 +179,12 @@ module AsciidocPDF
     property syntax_plain_color : Tuple(Float64, Float64, Float64) = {0.0, 0.0, 0.0}      # black
     property syntax_error_color : Tuple(Float64, Float64, Float64) = {0.8, 0.0, 0.0}      # red
 
+    # ----- Index -----
+    property index_title : String = "Index"
+    property index_font_size : Float64 = 10.0
+    property index_line_height : Float64 = 1.6
+    property index_indent : Float64 = 20.0
+
     # ----- TOC -----
     property toc_title : String = "Table of Contents"
     property toc_font_size : Float64 = 10.5

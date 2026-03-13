@@ -41,6 +41,15 @@ module AsciidocPDF
     # Title of the section currently being rendered.
     @current_section_title : String = ""
 
+    # Index entry: a term with its page occurrences.
+    record IndexEntry,
+      primary : String,
+      secondary : String,
+      page_number : Int32
+
+    # Collected index entries (primary term -> secondary term -> page numbers).
+    @index_entries : Array(IndexEntry) = [] of IndexEntry
+
     # Cross-reference resolution table.
     # Maps anchor_id -> { page_number, display_text }
     record AnchorDef,
@@ -164,6 +173,9 @@ module AsciidocPDF
 
       # Flush any footnotes remaining on the last page.
       flush_page_footnotes if @current_page
+
+      # Render index if there are any collected terms
+      render_index if @index_entries.size > 0
 
       # Render headers and footers
       render_headers_footers(ast)
@@ -301,11 +313,24 @@ module AsciidocPDF
       when AsciiDoc::CrossRef
         # Inline cross-refs are handled in paragraph rendering;
         # block-level cross-refs (rare) are silently skipped here.
+      when AsciiDoc::IndexTerm
+        # Register the index term with the current page number.
+        collect_index_term(node.primary, node.secondary)
       when AsciiDoc::Toc
         # Handled separately after content
       else
         render_children(node)
       end
+    end
+
+    # Registers an index term occurrence at the current page.
+    private def collect_index_term(primary : String, secondary : String) : Nil
+      return if primary.empty?
+      @index_entries << IndexEntry.new(
+        primary: primary,
+        secondary: secondary,
+        page_number: @page_number
+      )
     end
 
     # ----- Title Page -----
@@ -408,6 +433,7 @@ module AsciidocPDF
       fragments = AsciiDoc::Parser.parse_inline(para.text)
 
       # Assign sequential indices to footnote fragments and collect them.
+      # Also collect inline index terms (footnote_index == -2).
       fragments = fragments.map do |frag|
         if frag.footnote_index == -1
           @footnote_counter += 1
@@ -423,6 +449,15 @@ module AsciidocPDF
             footnote_index: idx,
             footnote_text: frag.footnote_text
           )
+        elsif frag.footnote_index == -2
+          # Inline index term: "indexterm:Primary|Secondary"
+          if frag.footnote_text.starts_with?("indexterm:")
+            payload = frag.footnote_text["indexterm:".size..]
+            parts = payload.split("|", 2)
+            collect_index_term(parts[0], parts.size > 1 ? parts[1] : "")
+          end
+          # Invisible — emit empty fragment
+          AsciiDoc::InlineText.new(text: "")
         else
           frag
         end
@@ -615,34 +650,39 @@ module AsciidocPDF
 
     # Renders a single line of source code with syntax-highlighted tokens.
     #
-    # Each token is drawn at the current x position using the colour that
-    # corresponds to its `TokenType`.  The x cursor advances by the token
-    # width after every token so that tokens are laid out inline.
+    # Uses the PDF::Syntax engine (8 languages, 17 token types) to tokenise
+    # each line and draws each token at the correct x position with its colour.
+    # Courier is a fixed-width font: each character is ~0.6 × font_size wide.
     private def render_highlighted_line(line : String, lang : String, base_x : Float64, y : Float64) : Nil
-      tokens = SyntaxHighlighter.highlight(line, lang)
+      lexer = PDF::Syntax::Highlighter.lexer_for(lang)
+      tokens = lexer.tokenise(line)
       x = base_x
       tokens.each do |token|
-        r, g, b = token_color(token.type)
+        r, g, b = syntax_token_color(token.type)
         page.fill_color(r, g, b)
-        page.text(token.value, at: {x, y})
+        page.text(token.text, at: {x, y})
         # Advance x by an approximation of the token width.
-        # Courier is a fixed-width font: each character is ~0.6 × font_size wide.
-        x += token.value.size * @theme.code_font_size * 0.6
+        x += token.text.size * @theme.code_font_size * 0.6
       end
     end
 
-    # Maps a `SyntaxHighlighter::TokenType` to an RGB colour from the theme.
-    private def token_color(type : SyntaxHighlighter::TokenType) : Tuple(Float64, Float64, Float64)
+    # Maps a PDF::Syntax::TokenType to an RGB colour from the theme.
+    private def syntax_token_color(type : PDF::Syntax::TokenType) : Tuple(Float64, Float64, Float64)
       case type
-      in SyntaxHighlighter::TokenType::KEYWORD     then @theme.syntax_keyword_color
-      in SyntaxHighlighter::TokenType::STRING      then @theme.syntax_string_color
-      in SyntaxHighlighter::TokenType::COMMENT     then @theme.syntax_comment_color
-      in SyntaxHighlighter::TokenType::NUMBER      then @theme.syntax_number_color
-      in SyntaxHighlighter::TokenType::IDENTIFIER  then @theme.syntax_identifier_color
-      in SyntaxHighlighter::TokenType::PUNCTUATION then @theme.syntax_punctuation_color
-      in SyntaxHighlighter::TokenType::PLAIN       then @theme.syntax_plain_color
-      in SyntaxHighlighter::TokenType::WHITESPACE  then @theme.syntax_plain_color
-      in SyntaxHighlighter::TokenType::ERROR       then @theme.syntax_error_color
+      when PDF::Syntax::TokenType::Keyword       then @theme.syntax_keyword_color
+      when PDF::Syntax::TokenType::StringLiteral then @theme.syntax_string_color
+      when PDF::Syntax::TokenType::Comment       then @theme.syntax_comment_color
+      when PDF::Syntax::TokenType::Number        then @theme.syntax_number_color
+      when PDF::Syntax::TokenType::Operator      then @theme.syntax_identifier_color
+      when PDF::Syntax::TokenType::Punctuation   then @theme.syntax_punctuation_color
+      when PDF::Syntax::TokenType::TypeName      then @theme.syntax_identifier_color
+      when PDF::Syntax::TokenType::Builtin       then @theme.syntax_identifier_color
+      when PDF::Syntax::TokenType::Attribute     then @theme.syntax_identifier_color
+      when PDF::Syntax::TokenType::Constant      then @theme.syntax_keyword_color
+      when PDF::Syntax::TokenType::TagName       then @theme.syntax_keyword_color
+      when PDF::Syntax::TokenType::AttrName      then @theme.syntax_identifier_color
+      when PDF::Syntax::TokenType::AttrValue     then @theme.syntax_string_color
+      else                                        @theme.syntax_plain_color
       end
     end
 
@@ -1041,6 +1081,84 @@ module AsciidocPDF
         move_down(line_height)
       end
     end
+
+    # ----- Index -----
+
+    # Renders an alphabetical index section at the end of the document.
+    #
+    # Index entries are grouped by primary term (sorted alphabetically).
+    # Each primary term lists its page occurrences; secondary terms are
+    # indented beneath the primary term.
+    #
+    # Ported from Asciidoctor::PDF::Converter#convert_index_list (Ruby).
+    private def render_index : Nil
+      return if @index_entries.empty?
+
+      new_page
+
+      # Index title
+      apply_heading_font(page, @theme.heading_h2_font_size)
+      r, g, b = @theme.heading_font_color
+      page.fill_color(r, g, b)
+      page.text(@theme.index_title, at: {content_left, @cursor_y - @theme.heading_h2_font_size})
+      move_down(@theme.heading_h2_font_size + @theme.heading_margin_bottom)
+
+      # Group entries: primary -> secondary -> sorted unique page numbers
+      # Structure: Hash(primary, Hash(secondary, Array(Int32)))
+      grouped = {} of String => Hash(String, Array(Int32))
+      @index_entries.each do |entry|
+        grouped[entry.primary] ||= {} of String => Array(Int32)
+        grouped[entry.primary][entry.secondary] ||= [] of Int32
+        unless grouped[entry.primary][entry.secondary].includes?(entry.page_number)
+          grouped[entry.primary][entry.secondary] << entry.page_number
+        end
+      end
+
+      # Sort primary terms alphabetically (case-insensitive)
+      sorted_primaries = grouped.keys.sort_by(&.downcase)
+
+      line_height = @theme.index_font_size * @theme.index_line_height
+      apply_base_font(page, @theme.index_font_size)
+
+      sorted_primaries.each do |primary|
+        secondaries = grouped[primary]
+
+        # Primary entry with page numbers for the "" secondary key
+        primary_pages = secondaries[""]? || [] of Int32
+        primary_pages_sorted = primary_pages.sort
+
+        ensure_space(line_height)
+        r, g, b = @theme.base_font_color
+        page.fill_color(r, g, b)
+        apply_base_font(page, @theme.index_font_size)
+
+        if primary_pages_sorted.empty?
+          page.text(primary, at: {content_left, @cursor_y - @theme.index_font_size})
+        else
+          pages_str = primary_pages_sorted.map(&.to_s).join(", ")
+          page.text("#{primary} \u2014 #{pages_str}", at: {content_left, @cursor_y - @theme.index_font_size})
+        end
+        move_down(line_height)
+
+        # Secondary entries (sorted alphabetically, skip empty key)
+        sorted_secondaries = secondaries.keys.reject(&.empty?).sort_by(&.downcase)
+        sorted_secondaries.each do |secondary|
+          sec_pages = secondaries[secondary].sort
+          pages_str = sec_pages.map(&.to_s).join(", ")
+
+          ensure_space(line_height)
+          r, g, b = @theme.base_font_color
+          page.fill_color(r, g, b)
+          apply_base_font(page, @theme.index_font_size)
+          page.text("  #{secondary} \u2014 #{pages_str}",
+            at: {content_left + @theme.index_indent, @cursor_y - @theme.index_font_size})
+          move_down(line_height)
+        end
+      end
+    end
+
+    # Exposes the collected index entries for testing.
+    getter index_entries
 
     # ----- Footnotes -----
 
