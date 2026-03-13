@@ -138,6 +138,15 @@ module AsciidocPDF
     property header_height : Float64 = 36.0
     property header_border_width : Float64 = 0.5
     property header_border_color : Tuple(Float64, Float64, Float64) = {0.8, 0.8, 0.8}
+    # Content slots: left, center, right. Supported tokens:
+    #   {page_number}  — current page number
+    #   {page_count}   — total number of pages
+    #   {document_title} — document title from header
+    #   {section_title}  — title of the current section
+    property header_left : String = ""
+    property header_center : String = ""
+    property header_right : String = "{document_title}"
+    property header_skip_first_page : Bool = true
 
     property footer_enabled : Bool = true
     property footer_font_size : Float64 = 8.0
@@ -145,6 +154,10 @@ module AsciidocPDF
     property footer_height : Float64 = 36.0
     property footer_border_width : Float64 = 0.5
     property footer_border_color : Tuple(Float64, Float64, Float64) = {0.8, 0.8, 0.8}
+    property footer_left : String = ""
+    property footer_center : String = "{page_number} / {page_count}"
+    property footer_right : String = ""
+    property footer_skip_first_page : Bool = true
 
     # ----- Footnotes -----
     property footnote_font_size : Float64 = 8.0

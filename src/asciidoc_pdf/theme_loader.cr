@@ -203,6 +203,10 @@ module AsciidocPDF
         theme.header_height = float(header["height"]?) if header["height"]?
         theme.header_border_width = float(header["border_width"]?) if header["border_width"]?
         theme.header_border_color = color(header["border_color"]?) if header["border_color"]?
+        theme.header_left = str(header["left"]?) if header["left"]?
+        theme.header_center = str(header["center"]?) if header["center"]?
+        theme.header_right = str(header["right"]?) if header["right"]?
+        theme.header_skip_first_page = bool(header["skip_first_page"]?) if header["skip_first_page"]?
       end
 
       # ----- Footer -----
@@ -213,6 +217,10 @@ module AsciidocPDF
         theme.footer_height = float(footer["height"]?) if footer["height"]?
         theme.footer_border_width = float(footer["border_width"]?) if footer["border_width"]?
         theme.footer_border_color = color(footer["border_color"]?) if footer["border_color"]?
+        theme.footer_left = str(footer["left"]?) if footer["left"]?
+        theme.footer_center = str(footer["center"]?) if footer["center"]?
+        theme.footer_right = str(footer["right"]?) if footer["right"]?
+        theme.footer_skip_first_page = bool(footer["skip_first_page"]?) if footer["skip_first_page"]?
       end
 
       # ----- TOC -----
