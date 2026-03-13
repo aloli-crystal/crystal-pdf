@@ -31,8 +31,84 @@ module AsciidocPDF
       level : Int32,
       page_number : Int32
 
+    # Loaded TrueType fonts, keyed by role (:base, :base_bold, :base_italic,
+    # :base_bold_italic, :heading, :code)
+    @ttf_fonts : Hash(Symbol, PDF::Fonts::TrueTypeFont) = {} of Symbol => PDF::Fonts::TrueTypeFont
+
     def initialize(@theme : Theme = Theme.new)
       @document = PDF::Document.new
+      load_truetype_fonts
+    end
+
+    # Loads TrueType fonts from the theme paths (if configured).
+    private def load_truetype_fonts : Nil
+      {
+        base:             @theme.base_font_path,
+        base_bold:        @theme.base_font_bold_path,
+        base_italic:      @theme.base_font_italic_path,
+        base_bold_italic: @theme.base_font_bold_italic_path,
+        heading:          @theme.heading_font_path,
+        code:             @theme.code_font_path,
+      }.each do |role, path|
+        next if path.nil? || path.empty?
+        begin
+          @ttf_fonts[role] = @document.load_font(path)
+        rescue ex
+          @warnings << "Could not load TrueType font for #{role}: #{path} (#{ex.message})"
+        end
+      end
+    end
+
+    # Applies the base TrueType font (or Type1 fallback) to a page.
+    private def apply_base_font(page : PDF::Page, size : Float64 = @theme.base_font_size) : Nil
+      if ttf = @ttf_fonts[:base]?
+        page.font(ttf, size: size)
+      else
+        page.font(@theme.base_font_family, size: size)
+      end
+    end
+
+    # Applies the heading TrueType font (or Type1 fallback) to a page.
+    private def apply_heading_font(page : PDF::Page, size : Float64) : Nil
+      if ttf = @ttf_fonts[:heading]?
+        page.font(ttf, size: size)
+      elsif ttf = @ttf_fonts[:base_bold]?
+        page.font(ttf, size: size)
+      else
+        page.font(@theme.heading_font_family, size: size)
+      end
+    end
+
+    # Applies the code TrueType font (or Type1 fallback) to a page.
+    private def apply_code_font(page : PDF::Page, size : Float64 = @theme.code_font_size) : Nil
+      if ttf = @ttf_fonts[:code]?
+        page.font(ttf, size: size)
+      else
+        page.font(@theme.code_font_family, size: size)
+      end
+    end
+
+    # Applies the bold TrueType font (or Type1 fallback) to a page.
+    private def apply_bold_font(page : PDF::Page, size : Float64) : Nil
+      if ttf = @ttf_fonts[:base_bold]?
+        page.font(ttf, size: size)
+      else
+        page.font(@theme.base_font_family, size: size)
+      end
+    end
+
+    # Applies the italic TrueType font (or Type1 fallback) to a page.
+    private def apply_italic_font(page : PDF::Page, size : Float64) : Nil
+      if ttf = @ttf_fonts[:base_italic]?
+        page.font(ttf, size: size)
+      else
+        page.font(@theme.base_font_family, size: size)
+      end
+    end
+
+    # Returns true if any TrueType font is configured.
+    def truetype_enabled? : Bool
+      !@ttf_fonts.empty?
     end
 
     # Converts an AsciiDoc source string to a PDF document.
@@ -92,7 +168,7 @@ module AsciidocPDF
       @page_number += 1
       @document.page(width: @theme.page_width, height: @theme.page_height) do |page|
         @current_page = page
-        page.font(@theme.base_font_family, size: @theme.base_font_size)
+        apply_base_font(page)
         @cursor_y = @theme.page_height - @theme.page_margin_top
       end
     end
@@ -168,7 +244,7 @@ module AsciidocPDF
 
         # Title centered vertically
         title_y = @theme.page_height * 0.55
-        pg.font(@theme.heading_font_family, size: @theme.title_page_font_size)
+        apply_heading_font(pg, @theme.title_page_font_size)
         r, g, b = @theme.title_page_font_color
         pg.fill_color(r, g, b)
         # Center the title
@@ -176,7 +252,7 @@ module AsciidocPDF
 
         # Author
         if !ast.author.empty?
-          pg.font(@theme.base_font_family, size: @theme.title_page_author_font_size)
+          apply_base_font(pg, @theme.title_page_author_font_size)
           r, g, b = @theme.base_font_color
           pg.fill_color(r, g, b)
           pg.text(ast.author, at: {content_left, title_y - 50.0})
@@ -184,7 +260,7 @@ module AsciidocPDF
 
         # Revision / Date
         if !ast.revision.empty?
-          pg.font(@theme.base_font_family, size: @theme.title_page_revision_font_size)
+          apply_base_font(pg, @theme.title_page_revision_font_size)
           pg.text(ast.revision, at: {content_left, title_y - 75.0})
         end
 
@@ -209,7 +285,7 @@ module AsciidocPDF
       )
 
       # Render heading
-      page.font(@theme.heading_font_family, size: font_size)
+      apply_heading_font(page, font_size)
       r, g, b = @theme.heading_font_color
       page.fill_color(r, g, b)
       page.text(section.title, at: {content_left, @cursor_y})
@@ -217,7 +293,7 @@ module AsciidocPDF
       move_down(font_size + @theme.heading_margin_bottom)
 
       # Reset to base font
-      page.font(@theme.base_font_family, size: @theme.base_font_size)
+      apply_base_font(page)
       r, g, b = @theme.base_font_color
       page.fill_color(r, g, b)
 
@@ -279,14 +355,14 @@ module AsciidocPDF
         end
 
         if frag.bold
-          page.font(@theme.base_font_family, size: font_size)
+          apply_bold_font(page, font_size)
           # Bold simulation: render twice with slight offset
         elsif frag.italic
-          page.font(@theme.base_font_family, size: font_size)
+          apply_italic_font(page, font_size)
         elsif frag.mono
-          page.font(@theme.code_font_family, size: @theme.code_font_size)
+          apply_code_font(page)
         else
-          page.font(@theme.base_font_family, size: font_size)
+          apply_base_font(page, font_size)
         end
 
         if !frag.link.empty?
@@ -360,14 +436,14 @@ module AsciidocPDF
       # Label
       label_x = content_left + @theme.admonition_padding
       label_y = @cursor_y - @theme.admonition_padding - @theme.admonition_label_font_size
-      page.font(@theme.base_font_family, size: @theme.admonition_label_font_size)
+      apply_base_font(page, @theme.admonition_label_font_size)
       r, g, b = border_color
       page.fill_color(r, g, b)
       page.text(adm_type, at: {label_x, label_y})
 
       # Content
       text_y = label_y - @theme.admonition_label_font_size - 4.0
-      page.font(@theme.base_font_family, size: @theme.base_font_size)
+      apply_base_font(page)
       r, g, b = @theme.base_font_color
       page.fill_color(r, g, b)
       page.text(content, at: {label_x, text_y})
@@ -385,7 +461,7 @@ module AsciidocPDF
 
       # Title
       if !block.title.empty?
-        page.font(@theme.base_font_family, size: @theme.base_font_size)
+        apply_base_font(page)
         r, g, b = @theme.base_font_color
         page.fill_color(r, g, b)
         page.text(block.title, at: {content_left, @cursor_y})
@@ -406,7 +482,7 @@ module AsciidocPDF
       page.stroke
 
       # Code text
-      page.font(@theme.code_font_family, size: @theme.code_font_size)
+      apply_code_font(page)
 
       text_x = content_left + @theme.code_padding
       text_y = @cursor_y - @theme.code_padding - @theme.code_font_size
@@ -431,7 +507,7 @@ module AsciidocPDF
       move_down(box_height + @theme.paragraph_margin_bottom)
 
       # Reset font
-      page.font(@theme.base_font_family, size: @theme.base_font_size)
+      apply_base_font(page)
     end
 
     # Renders a single line of source code with syntax-highlighted tokens.
@@ -501,7 +577,7 @@ module AsciidocPDF
 
       # Title
       if !block.title.empty?
-        page.font(@theme.heading_font_family, size: @theme.base_font_size)
+        apply_heading_font(page, @theme.base_font_size)
         r, g, b = @theme.heading_font_color
         page.fill_color(r, g, b)
         text_y -= @theme.base_font_size
@@ -510,7 +586,7 @@ module AsciidocPDF
       end
 
       # Content
-      page.font(@theme.base_font_family, size: @theme.base_font_size)
+      apply_base_font(page)
       r, g, b = @theme.base_font_color
       page.fill_color(r, g, b)
       text_y -= @theme.base_font_size
@@ -536,7 +612,7 @@ module AsciidocPDF
       page.stroke
 
       # Text
-      page.font(@theme.base_font_family, size: @theme.base_font_size)
+      apply_base_font(page)
       r, g, b = @theme.blockquote_font_color
       page.fill_color(r, g, b)
       text_x = content_left + @theme.blockquote_padding_left
@@ -578,7 +654,7 @@ module AsciidocPDF
         ensure_space(line_height)
 
         # Bullet marker
-        page.font(@theme.base_font_family, size: @theme.base_font_size)
+        apply_base_font(page)
         r, g, b = @theme.list_marker_font_color
         page.fill_color(r, g, b)
         page.text(@theme.ulist_marker, at: {indent - 12.0, @cursor_y - @theme.base_font_size})
@@ -608,7 +684,7 @@ module AsciidocPDF
         ensure_space(line_height)
 
         # Number marker
-        page.font(@theme.base_font_family, size: @theme.base_font_size)
+        apply_base_font(page)
         r, g, b = @theme.list_marker_font_color
         page.fill_color(r, g, b)
         marker = "#{idx + 1}."
@@ -636,7 +712,7 @@ module AsciidocPDF
         ensure_space(line_height * 2)
 
         # Term (bold)
-        page.font(@theme.base_font_family, size: @theme.base_font_size)
+        apply_bold_font(page, @theme.base_font_size)
         r, g, b = @theme.base_font_color
         page.fill_color(r, g, b)
         page.text(item.term, at: {content_left, @cursor_y - @theme.base_font_size})
@@ -661,7 +737,7 @@ module AsciidocPDF
       # Title
       if !table.title.empty?
         ensure_space(@theme.base_font_size * 2)
-        page.font(@theme.base_font_family, size: @theme.base_font_size)
+        apply_base_font(page)
         r, g, b = @theme.base_font_color
         page.fill_color(r, g, b)
         page.text("Table: #{table.title}", at: {content_left, @cursor_y - @theme.base_font_size})
@@ -710,9 +786,9 @@ module AsciidocPDF
 
           # Text
           if is_header
-            page.font(@theme.base_font_family, size: @theme.base_font_size)
+            apply_bold_font(page, @theme.base_font_size)
           else
-            page.font(@theme.base_font_family, size: @theme.base_font_size)
+            apply_base_font(page)
           end
           r, g, b = @theme.base_font_color
           page.fill_color(r, g, b)
@@ -760,14 +836,14 @@ module AsciidocPDF
 
           # Caption
           if !img.title.empty?
-            page.font(@theme.base_font_family, size: @theme.image_caption_font_size)
+            apply_base_font(page, @theme.image_caption_font_size)
             r, g, b = @theme.image_caption_font_color
             page.fill_color(r, g, b)
             page.text(img.title, at: {content_left, @cursor_y - @theme.image_caption_font_size})
             move_down(@theme.image_caption_font_size + 8.0)
 
             # Reset font
-            page.font(@theme.base_font_family, size: @theme.base_font_size)
+            apply_base_font(page)
             r, g, b = @theme.base_font_color
             page.fill_color(r, g, b)
           end
@@ -791,7 +867,7 @@ module AsciidocPDF
       page.rectangle(content_left, @cursor_y, content_width, box_height)
       page.stroke
 
-      page.font(@theme.base_font_family, size: @theme.base_font_size)
+      apply_base_font(page)
       r, g, b = @theme.base_font_color
       page.fill_color(r, g, b)
       alt = img.alt.empty? ? img.target : img.alt
@@ -827,14 +903,14 @@ module AsciidocPDF
       new_page
 
       # TOC title
-      page.font(@theme.heading_font_family, size: @theme.heading_h2_font_size)
+      apply_heading_font(page, @theme.heading_h2_font_size)
       r, g, b = @theme.heading_font_color
       page.fill_color(r, g, b)
       page.text(@theme.toc_title, at: {content_left, @cursor_y - @theme.heading_h2_font_size})
       move_down(@theme.heading_h2_font_size + @theme.heading_margin_bottom)
 
       # TOC entries
-      page.font(@theme.base_font_family, size: @theme.toc_font_size)
+      apply_base_font(page, @theme.toc_font_size)
       r, g, b = @theme.base_font_color
       page.fill_color(r, g, b)
 
@@ -871,13 +947,13 @@ module AsciidocPDF
     private def render_footnote_reference(index : Int32, x : Float64, font_size : Float64, line_height : Float64) : Nil
       ref_text = "[#{index}]"
       ref_size = (font_size * 0.7).round(1)
-      page.font(@theme.base_font_family, size: ref_size)
+      apply_base_font(page, ref_size)
       r, g, b = @theme.footnote_font_color
       page.fill_color(r, g, b)
       # Position slightly above the baseline (superscript effect)
       page.text(ref_text, at: {x, @cursor_y - font_size + ref_size * 0.5})
       # Restore base font
-      page.font(@theme.base_font_family, size: font_size)
+      apply_base_font(page, font_size)
       r, g, b = @theme.base_font_color
       page.fill_color(r, g, b)
     end
@@ -909,7 +985,7 @@ module AsciidocPDF
       page.stroke
 
       # Footnote entries
-      page.font(@theme.base_font_family, size: fn_size)
+      apply_base_font(page, fn_size)
       r, g, b = @theme.footnote_font_color
       page.fill_color(r, g, b)
 
@@ -919,7 +995,7 @@ module AsciidocPDF
       end
 
       # Restore base font
-      page.font(@theme.base_font_family, size: @theme.base_font_size)
+      apply_base_font(page)
       r, g, b = @theme.base_font_color
       page.fill_color(r, g, b)
     end
