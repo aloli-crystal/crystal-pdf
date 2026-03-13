@@ -5,6 +5,7 @@ module AsciidocPDF
   class CLI
     @input_file : String = ""
     @output_file : String = ""
+    @theme_file : String = ""
 
     def initialize
     end
@@ -31,7 +32,14 @@ module AsciidocPDF
       end
 
       source = File.read(@input_file)
-      converter = Converter.convert(source)
+
+      theme = if @theme_file.empty?
+        Theme.new
+      else
+        ThemeLoader.load(@theme_file)
+      end
+
+      converter = Converter.convert(source, theme)
 
       if converter.warnings.size > 0
         converter.warnings.each do |w|
@@ -49,6 +57,10 @@ module AsciidocPDF
 
         parser.on("-o OUTPUT", "--output OUTPUT", "Output PDF file path") do |o|
           @output_file = o
+        end
+
+        parser.on("-t THEME", "--theme THEME", "Path to a YAML theme file") do |t|
+          @theme_file = t
         end
 
         parser.on("-h", "--help", "Show this help") do
