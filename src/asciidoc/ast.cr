@@ -265,6 +265,31 @@ module AsciiDoc
     end
   end
 
+  # An explicit anchor definition: [[anchor_id]] or [#anchor_id]
+  # Creates a named destination in the PDF.
+  class Anchor < Node
+    # The anchor identifier.
+    property anchor_id : String = ""
+
+    def node_type : String
+      "anchor"
+    end
+  end
+
+  # A cross-reference: <<anchor_id>> or <<anchor_id,display text>>
+  # Resolved to a page number or section title at render time.
+  class CrossRef < Node
+    # The target anchor identifier.
+    property target : String = ""
+
+    # Optional display text (if empty, the section title or anchor is used).
+    property display_text : String = ""
+
+    def node_type : String
+      "cross_ref"
+    end
+  end
+
   # Inline text with formatting.
   record InlineText,
     text : String,
@@ -274,5 +299,7 @@ module AsciiDoc
     link : String = "",
     role : String = "",
     footnote_index : Int32 = 0,
-    footnote_text : String = ""
+    footnote_text : String = "",
+    cross_ref_target : String = "",
+    cross_ref_display : String = ""
 end
