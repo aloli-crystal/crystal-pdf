@@ -44,8 +44,15 @@ module PDF
     # Extended graphics state resources (ExtGState object -> resource data)
     @ext_g_state_resources : Hash(UInt64, ExtGStateResources)
 
+    # Annots on this page (links, text notes, etc.)
+    @annots : Array(Annot)
+
     # The page's indirect object (set after finalization)
     @page_object : Objects::Indirect?
+
+    # Pre-allocated object ID for this page, used to create references
+    # before finalization (needed for destinations and outline items).
+    @pre_allocated_id : Int32
 
     # Content stream object
     @content_stream : Objects::Indirect?
@@ -88,6 +95,51 @@ module PDF
       @truetype_font_resources = {} of Fonts::TrueTypeFont => TrueTypeFontResources
       @image_resources = {} of Images::Base => ImageResources
       @ext_g_state_resources = {} of UInt64 => ExtGStateResources
+      @annots = [] of Annot
+      @pre_allocated_id = @document.allocate_object_id
+    end
+
+    # Returns a reference to this page that can be used before finalization
+    # (e.g., for building destinations and outline items).
+    #
+    # ```
+    # page_ref = page.page_reference
+    # dest = PDF::Destination.fit(page_ref)
+    # ```
+    def page_reference : Objects::Reference
+      Objects::Reference.new(@pre_allocated_id)
+    end
+
+    # Adds an annotation to this page.
+    #
+    # ```
+    # annot = PDF::Annot.link_uri(
+    #   rect: {72, 700, 200, 720},
+    #   uri: "https://crystal-lang.org"
+    # )
+    # page.add_annotation(annot)
+    # ```
+    def add_annotation(annot : Annot) : self
+      @annots << annot
+      self
+    end
+
+    # Convenience: adds a URI link annotation on this page.
+    #
+    # ```
+    # page.link_uri(rect: {72, 700, 200, 720}, uri: "https://crystal-lang.org")
+    # ```
+    def link_uri(rect : Tuple(Number, Number, Number, Number), uri : String) : self
+      add_annotation(Annot.link_uri(rect: rect, uri: uri))
+    end
+
+    # Convenience: adds an internal destination link annotation on this page.
+    #
+    # ```
+    # page.link_dest(rect: {72, 700, 200, 720}, dest: "chapter-1")
+    # ```
+    def link_dest(rect : Tuple(Number, Number, Number, Number), dest : String) : self
+      add_annotation(Annot.link_dest(rect: rect, dest: dest))
     end
 
     # Sets the current font for subsequent text operations.
@@ -1214,7 +1266,20 @@ module PDF
         dict["Contents"] = content_stream.reference
       end
 
-      page_obj = @document.register_object(dict)
+      # Add annotations if any
+      unless @annots.empty?
+        annots = Objects::Array.new
+        @annots.each do |an|
+          annot_obj = @document.register_object(an.dict)
+          annots << annot_obj.reference
+        end
+        dict["Annots"] = annots
+      end
+
+      # Use the pre-allocated ID so that references created before
+      # finalization (destinations, outline items) point to this object.
+      page_obj = Objects::Indirect.new(@pre_allocated_id, dict)
+      @document.objects << page_obj
       @page_object = page_obj
       page_obj
     end

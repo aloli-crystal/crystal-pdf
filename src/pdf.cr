@@ -71,6 +71,11 @@ require "./pdf/table"
 # SVG rendering engine
 require "./pdf/svg"
 
+# Annotations, destinations, and outline (bookmarks)
+require "./pdf/annotations"
+require "./pdf/destinations"
+require "./pdf/outline"
+
 # Document structure
 require "./pdf/document"
 require "./pdf/page"

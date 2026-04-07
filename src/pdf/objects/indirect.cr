@@ -22,7 +22,7 @@ module PDF
     class Indirect < Base
       getter object_number : Int32
       getter generation : Int32
-      getter value : Base
+      property value : Base
 
       def initialize(@object_number : Int32, @generation : Int32, @value : Base)
         raise ArgumentError.new("Object number must be positive") if @object_number < 1

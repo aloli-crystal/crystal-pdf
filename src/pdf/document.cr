@@ -60,12 +60,19 @@ module PDF
     # Loaded TrueType fonts (path -> font object)
     @truetype_fonts : Hash(String, Fonts::TrueTypeFont)
 
+    # Named destinations (name -> destination array)
+    @named_dests : Hash(String, Objects::Array)
+
+    # Document outline (bookmarks)
+    @outline : Outline?
+
     def initialize
       @objects = [] of Objects::Indirect
       @pages = [] of Page
       @next_object_id = 1
       @fonts = {} of String => Fonts::Base
       @truetype_fonts = {} of String => Fonts::TrueTypeFont
+      @named_dests = {} of String => Objects::Array
     end
 
     # Creates a new page and yields it for content.
@@ -152,6 +159,33 @@ module PDF
       @truetype_fonts
     end
 
+    # Adds a named destination to the document.
+    #
+    # Named destinations allow internal links (from annotations or outline items)
+    # to reference a specific page view by name.
+    #
+    # ```
+    # page_ref = page.page_reference
+    # dest = PDF::Destination.fit(page_ref)
+    # pdf.add_dest("chapter-1", dest)
+    # ```
+    def add_dest(name : String, dest : Objects::Array) : Nil
+      @named_dests[name] = dest
+    end
+
+    # Returns the document outline, creating it if needed.
+    #
+    # ```
+    # pdf.outline.define do |o|
+    #   o.section("Chapter 1", dest: dest1) do
+    #     o.item("Section 1.1", dest: dest2)
+    #   end
+    # end
+    # ```
+    def outline : Outline
+      @outline ||= Outline.new(self)
+    end
+
     # Saves the document to a file.
     def save(path : String) : Nil
       File.open(path, "wb") do |file|
@@ -216,6 +250,22 @@ module PDF
       dict = Objects::Dictionary.new
       dict["Type"] = Objects::Name::CATALOG
       dict["Pages"] = pages_root.reference
+
+      # Add named destinations if any
+      unless @named_dests.empty?
+        dests_dict = Objects::Dictionary.new
+        @named_dests.each do |name, dest|
+          dests_dict[name] = dest
+        end
+        dict["Dests"] = dests_dict
+      end
+
+      # Add outline (bookmarks) if defined
+      if outline_obj = @outline
+        if outline_ref = outline_obj.finalize!
+          dict["Outlines"] = outline_ref
+        end
+      end
 
       register_object(dict)
     end
