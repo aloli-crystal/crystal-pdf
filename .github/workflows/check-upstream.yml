@@ -1,0 +1,74 @@
+name: Check upstream watzon/pdf.cr
+
+on:
+  schedule:
+    - cron: "0 8 * * 1" # Every Monday at 08:00 UTC
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  check-upstream:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for upstream changes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get last known upstream commit (stored in .upstream-sync)
+          if [ -f .upstream-sync ]; then
+            LAST_SYNC=$(cat .upstream-sync)
+          else
+            echo "No .upstream-sync file found. Skipping first run."
+            # Initialize with latest upstream commit
+            LATEST=$(gh api repos/watzon/pdf.cr/commits/master --jq '.sha')
+            echo "$LATEST" > .upstream-sync
+            exit 0
+          fi
+
+          # Get latest upstream commit
+          LATEST=$(gh api repos/watzon/pdf.cr/commits/master --jq '.sha')
+
+          if [ "$LAST_SYNC" = "$LATEST" ]; then
+            echo "No new commits in watzon/pdf.cr since last check."
+            exit 0
+          fi
+
+          # Check if issue already exists
+          existing=$(gh issue list --label upstream --search "New commits in watzon/pdf.cr" --state open --json number --jq 'length')
+          if [ "$existing" -gt 0 ]; then
+            echo "Open issue already exists, skipping."
+            exit 0
+          fi
+
+          # Get commit list
+          COMMITS=$(gh api "repos/watzon/pdf.cr/compare/${LAST_SYNC}...${LATEST}" --jq '.commits[] | "- [`\(.sha[0:7])`](https://github.com/watzon/pdf.cr/commit/\(.sha)) \(.commit.message | split("\n")[0])"' 2>/dev/null || echo "Unable to fetch commit details.")
+
+          body=$(cat <<EOF
+          New commits detected in upstream [watzon/pdf.cr](https://github.com/watzon/pdf.cr) since last sync.
+
+          | | Commit |
+          |---|---|
+          | **Last synced** | \`${LAST_SYNC:0:7}\` |
+          | **Latest upstream** | \`${LATEST:0:7}\` |
+
+          ### New commits
+
+          ${COMMITS}
+
+          ### Links
+
+          - [Compare changes](https://github.com/watzon/pdf.cr/compare/${LAST_SYNC}...${LATEST})
+          EOF
+          )
+
+          gh issue create \
+            --title "New commits in watzon/pdf.cr ($(date +%Y-%m-%d))" \
+            --body "$body" \
+            --label "upstream"
