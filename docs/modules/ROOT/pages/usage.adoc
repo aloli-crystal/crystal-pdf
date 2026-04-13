@@ -1,0 +1,60 @@
+= Usage
+
+== AsciiDoc to PDF (Library)
+
+[source,crystal]
+----
+require "asciidoc_pdf"
+
+# Convert AsciiDoc to PDF
+source = File.read("document.adoc")
+converter = AsciidocPDF::Converter.convert(source)
+converter.save("document.pdf")
+
+# With custom theme
+theme = AsciidocPDF::Theme.new
+theme.base_font_size = 12.0
+theme.heading_h1_font_size = 28.0
+
+converter = AsciidocPDF::Converter.convert(source, theme)
+converter.save("document.pdf")
+----
+
+== Low-level PDF Generation
+
+[source,crystal]
+----
+require "pdf"
+
+doc = PDF::Document.new
+
+doc.page(width: 595.28, height: 841.89) do |page|
+  page.font("Helvetica", size: 24)
+  page.fill_color(0.0, 0.0, 0.0)
+  page.text("Hello, World!", at: {72, 750})
+
+  page.font("Helvetica", size: 12)
+  page.text("Generated with crystal-pdf", at: {72, 720})
+
+  page.stroke_color(0.0, 0.0, 0.0)
+  page.line_width(1.0)
+  page.rectangle(72, 700, 451, 0.5)
+  page.stroke
+end
+
+File.open("output.pdf", "w") { |f| doc.write(f) }
+----
+
+== Command-line Interface
+
+[source,bash]
+----
+# Build the CLI
+shards build asciidoc-to-pdf
+
+# Convert a document
+./bin/asciidoc-to-pdf document.adoc
+
+# Specify output path
+./bin/asciidoc-to-pdf -o output.pdf document.adoc
+----

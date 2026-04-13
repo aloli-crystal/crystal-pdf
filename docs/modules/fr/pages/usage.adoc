@@ -1,0 +1,47 @@
+= Utilisation
+
+== AsciiDoc vers PDF (Bibliotheque)
+
+[source,crystal]
+----
+require "asciidoc_pdf"
+
+# Convertir AsciiDoc en PDF
+source = File.read("document.adoc")
+converter = AsciidocPDF::Converter.convert(source)
+converter.save("document.pdf")
+
+# Avec un theme personnalise
+theme = AsciidocPDF::Theme.new
+theme.base_font_size = 12.0
+theme.heading_h1_font_size = 28.0
+
+converter = AsciidocPDF::Converter.convert(source, theme)
+converter.save("document.pdf")
+----
+
+== Generation PDF bas niveau
+
+[source,crystal]
+----
+require "pdf"
+
+doc = PDF::Document.new
+
+doc.page(width: 595.28, height: 841.89) do |page|
+  page.font("Helvetica", size: 24)
+  page.fill_color(0.0, 0.0, 0.0)
+  page.text("Bonjour !", at: {72, 750})
+end
+
+File.open("sortie.pdf", "w") { |f| doc.write(f) }
+----
+
+== Ligne de commande
+
+[source,bash]
+----
+shards build asciidoc-to-pdf
+./bin/asciidoc-to-pdf document.adoc
+./bin/asciidoc-to-pdf -o sortie.pdf document.adoc
+----

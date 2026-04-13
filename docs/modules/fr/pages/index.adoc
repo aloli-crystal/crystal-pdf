@@ -1,0 +1,29 @@
+= Crystal PDF
+
+Bibliotheque Crystal pure pour la generation de PDF avec conversion AsciiDoc vers PDF.
+Combine un moteur PDF bas niveau (porte de https://github.com/watzon/pdf.cr[watzon/pdf.cr]) avec un convertisseur AsciiDoc haut niveau (porte de https://github.com/asciidoctor/asciidoctor-pdf[asciidoctor-pdf]).
+
+== Fonctionnalites du moteur PDF
+
+* *Gestion des pages* -- documents multi-pages avec dimensions personnalisees
+* *Rendu de texte* -- polices Type1 et TrueType avec support Unicode
+* *Graphiques* -- lignes, rectangles, cercles, courbes, couleurs, opacite
+* *Images* -- integration JPEG et PNG avec mise a l'echelle
+* *Texte formate* -- mise en page riche avec retour a la ligne et alignement
+* *Boites englobantes* -- systemes de coordonnees imbriques et mise en page multi-colonnes
+* *Tableaux* -- rendu de tableaux avec en-tetes et style
+* *SVG* -- rendu de graphiques SVG
+
+== Fonctionnalites du convertisseur AsciiDoc vers PDF
+
+* *Structure de document* -- page de titre, sections (6 niveaux), table des matieres
+* *Texte* -- paragraphes, balisage en ligne (gras, italique, monospace, liens)
+* *Listes* -- listes non ordonnees, ordonnees et de description avec imbrication
+* *Blocs de code* -- listings source avec coloration syntaxique
+* *Admonitions* -- NOTE, TIP, WARNING, CAUTION, IMPORTANT
+* *Tableaux* -- lignes d'en-tete, alignement, lignes alternees
+* *Thematisation* -- styles entierement configurables
+
+== Licence
+
+MIT

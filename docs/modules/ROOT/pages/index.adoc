@@ -1,0 +1,47 @@
+= Crystal PDF
+
+A pure Crystal library for PDF generation with AsciiDoc-to-PDF conversion.
+Combines a low-level PDF engine (ported from https://github.com/watzon/pdf.cr[watzon/pdf.cr]) with a high-level AsciiDoc converter (ported from https://github.com/asciidoctor/asciidoctor-pdf[asciidoctor-pdf]).
+
+== PDF Engine Features (ported from Prawn)
+
+* *Page management* -- create multi-page documents with custom dimensions
+* *Text rendering* -- Type1 and TrueType fonts with Unicode support
+* *Graphics* -- lines, rectangles, circles, curves, colors, opacity
+* *Images* -- JPEG and PNG embedding with scaling
+* *Formatted text* -- rich text layout with word wrapping and alignment
+* *Bounding boxes* -- nested coordinate systems and multi-column layouts
+* *Tables* -- cell-based table rendering with headers and styling
+* *SVG* -- render SVG graphics (rect, circle, line, path, polygon, text)
+
+== AsciiDoc-to-PDF Converter Features
+
+* *Document structure* -- title page, sections (6 levels), table of contents
+* *Text* -- paragraphs, inline markup (bold, italic, monospace, links)
+* *Lists* -- unordered, ordered, and description lists with nesting
+* *Code blocks* -- syntax-highlighted source listings
+* *Admonitions* -- NOTE, TIP, WARNING, CAUTION, IMPORTANT
+* *Tables* -- header rows, cell alignment, striped rows
+* *Images* -- block images with captions
+* *Blocks* -- sidebars, blockquotes, examples
+* *Theming* -- fully configurable styles (fonts, colors, spacing)
+
+== Architecture
+
+[cols="1,3"]
+|===
+| Layer | Description
+
+| `PDF::*`
+| Low-level PDF engine: document structure, pages, fonts, graphics, images, content streams, PDF object model.
+
+| `AsciiDoc::*`
+| AsciiDoc parser: tokenizes `.adoc` source into an AST.
+
+| `AsciidocPDF::*`
+| Converter and theme: traverses the AST and generates PDF output.
+|===
+
+== License
+
+MIT

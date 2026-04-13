@@ -1,0 +1,6 @@
+name: crystal-pdf
+title: 'Crystal PDF'
+version: '0.2.0'
+nav:
+  - modules/ROOT/nav.adoc
+  - modules/fr/nav.adoc

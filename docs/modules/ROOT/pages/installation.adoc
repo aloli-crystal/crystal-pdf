@@ -1,0 +1,28 @@
+= Installation
+
+== Requirements
+
+* Crystal >= 1.10.0
+
+== Add the Dependency
+
+[source,yaml]
+----
+dependencies:
+  crystal-pdf:
+    github: aloli/crystal-pdf
+----
+
+Then run:
+
+[source,bash]
+----
+shards install
+----
+
+== CLI Binary
+
+[source,bash]
+----
+shards build asciidoc-to-pdf
+----
