@@ -72,6 +72,12 @@ module PDF
     # Stamps (Form XObjects) — name => indirect object reference
     @stamps : Hash(String, Objects::Indirect)
 
+    # Cache for finalized TrueType font references (shared across pages).
+    # When multiple pages use the same TrueTypeFont object, the PDF objects
+    # (Type0 dict, CIDFont, FontDescriptor, FontFile2, CIDToGIDMap, ToUnicode)
+    # are created only once and referenced by all pages.
+    getter finalized_ttf_refs : Hash(Fonts::TrueTypeFont, Objects::Reference)
+
     def initialize
       @objects = [] of Objects::Indirect
       @pages = [] of Page
@@ -80,6 +86,7 @@ module PDF
       @truetype_fonts = {} of String => Fonts::TrueTypeFont
       @named_dests = {} of String => Objects::Array
       @stamps = {} of String => Objects::Indirect
+      @finalized_ttf_refs = {} of Fonts::TrueTypeFont => Objects::Reference
     end
 
     # Creates a new page and yields it for content.

@@ -1367,6 +1367,17 @@ module PDF
     # Creates all PDF objects for TrueType fonts
     private def finalize_truetype_fonts! : Nil
       @truetype_font_resources.each do |ttf_font, resources|
+        # Reuse document-level font objects if already created by another page.
+        # This avoids duplicate font objects with the same BaseFont name which
+        # can confuse PDF renderers.
+        if cached_ref = @document.finalized_ttf_refs[ttf_font]?
+          @truetype_font_resources[ttf_font] = TrueTypeFontResources.new(
+            cached_ref,
+            resources.key
+          )
+          next
+        end
+
         # Create font file stream (subset font data)
         font_file_stream = ttf_font.font_file_stream
         font_file_obj = @document.register_object(font_file_stream)
@@ -1398,9 +1409,14 @@ module PDF
         type0_font["ToUnicode"] = to_unicode_obj.reference
         type0_font_obj = @document.register_object(type0_font)
 
+        font_ref = type0_font_obj.reference
+
+        # Cache at document level for other pages to reuse
+        @document.finalized_ttf_refs[ttf_font] = font_ref
+
         # Update the resource reference
         @truetype_font_resources[ttf_font] = TrueTypeFontResources.new(
-          type0_font_obj.reference,
+          font_ref,
           resources.key
         )
       end
