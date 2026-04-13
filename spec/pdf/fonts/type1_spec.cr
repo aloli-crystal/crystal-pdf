@@ -66,10 +66,74 @@ describe PDF::Fonts::Type1 do
       font.glyph_width('W').should eq(600)
     end
 
-    it "returns default width for unknown characters" do
+    it "returns zero width for characters outside WinAnsiEncoding" do
       font = PDF::Fonts::Type1.new("Helvetica")
-      # Character outside defined range
-      font.glyph_width('\u0000').should eq(PDF::Fonts::Type1::DEFAULT_WIDTH)
+      # Character outside WinAnsi range (null, CJK, etc.)
+      font.glyph_width('\u0000').should eq(0)
+      font.glyph_width('\u4E2D').should eq(0)  # Chinese character
+    end
+
+    it "returns correct width for accented Latin characters" do
+      font = PDF::Fonts::Type1.new("Helvetica")
+      # é (U+00E9) maps to WinAnsi 0xE9 — should have width 556 (same as 'e')
+      font.glyph_width('é').should eq(556)
+      # à (U+00E0) maps to WinAnsi 0xE0
+      font.glyph_width('à').should eq(556)
+      # ç (U+00E7) maps to WinAnsi 0xE7
+      font.glyph_width('ç').should eq(500)
+    end
+
+    it "returns correct width for WinAnsi special characters" do
+      font = PDF::Fonts::Type1.new("Helvetica")
+      # Em dash U+2014 → WinAnsi 0x97
+      font.glyph_width('\u2014').should eq(1000)
+      # Euro sign U+20AC → WinAnsi 0x80
+      font.glyph_width('\u20AC').should eq(556)
+      # Bullet U+2022 → WinAnsi 0x95
+      font.glyph_width('\u2022').should eq(350)
+    end
+  end
+
+  describe "#encode_text" do
+    it "encodes ASCII text unchanged" do
+      font = PDF::Fonts::Type1.new("Helvetica")
+      bytes = font.encode_text("Hello")
+      bytes.should eq("Hello".to_slice)
+    end
+
+    it "encodes French accented characters to WinAnsi" do
+      font = PDF::Fonts::Type1.new("Helvetica")
+      bytes = font.encode_text("Spécifications")
+      # é (U+00E9) should become byte 0xE9
+      bytes[2].should eq(0xE9_u8)
+      bytes.size.should eq(14) # Same number of characters, but single bytes
+    end
+
+    it "encodes em dash to WinAnsi" do
+      font = PDF::Fonts::Type1.new("Helvetica")
+      bytes = font.encode_text("A\u2014B") # A—B
+      bytes[0].should eq(0x41_u8) # A
+      bytes[1].should eq(0x97_u8) # em dash in WinAnsi
+      bytes[2].should eq(0x42_u8) # B
+    end
+
+    it "encodes smart quotes and bullets" do
+      font = PDF::Fonts::Type1.new("Helvetica")
+      bytes = font.encode_text("\u201Ctest\u201D") # "test"
+      bytes[0].should eq(0x93_u8) # left double quote
+      bytes[5].should eq(0x94_u8) # right double quote
+    end
+
+    it "replaces unmappable characters with ?" do
+      font = PDF::Fonts::Type1.new("Helvetica")
+      bytes = font.encode_text("A\u4E2DB") # Chinese character
+      bytes[1].should eq(0x3F_u8) # ?
+    end
+
+    it "encodes euro sign" do
+      font = PDF::Fonts::Type1.new("Helvetica")
+      bytes = font.encode_text("\u20AC100")
+      bytes[0].should eq(0x80_u8) # Euro sign in WinAnsi
     end
   end
 
@@ -86,6 +150,21 @@ describe PDF::Fonts::Type1 do
       # "AB" = 667 + 667 = 1334 units, at 10pt: 13.34
       width = font.string_width("AB", 10.0)
       width.should be_close(13.34, 0.01)
+    end
+
+    it "correctly measures French accented text" do
+      font = PDF::Fonts::Type1.new("Helvetica")
+      # "é" has same width as "e" (556) in Helvetica
+      width_e = font.string_width("e", 12.0)
+      width_eacute = font.string_width("é", 12.0)
+      width_e.should eq(width_eacute)
+    end
+
+    it "correctly measures text with em dashes" do
+      font = PDF::Fonts::Type1.new("Helvetica")
+      # Em dash is 1000 units wide in Helvetica
+      width = font.string_width("\u2014", 10.0)
+      width.should be_close(10.0, 0.01)
     end
   end
 end

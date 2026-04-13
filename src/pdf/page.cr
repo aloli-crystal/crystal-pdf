@@ -1581,10 +1581,28 @@ module PDF
     end
 
     private def encode_text_string(text : String, font_name : String) : String
-      # For Type1 fonts with WinAnsiEncoding, encode as literal string
-      # TODO: Handle TrueType with proper encoding
-      escaped = text.gsub("\\", "\\\\").gsub("(", "\\(").gsub(")", "\\)")
-      "(#{escaped})"
+      # For Type1 fonts with WinAnsiEncoding, convert UTF-8 to WinAnsi bytes
+      # and escape special PDF characters within the byte stream.
+      type1_font = @document.font(font_name)
+      if type1_font.is_a?(Fonts::Type1)
+        winansi_bytes = type1_font.encode_text(text)
+        io = IO::Memory.new(winansi_bytes.size + 2)
+        io << '('
+        winansi_bytes.each do |byte|
+          case byte
+          when 0x28_u8 then io << "\\(" # (
+          when 0x29_u8 then io << "\\)" # )
+          when 0x5C_u8 then io << "\\\\" # \
+          else              io.write_byte(byte)
+          end
+        end
+        io << ')'
+        io.to_s
+      else
+        # Fallback for non-Type1 fonts: escape as-is
+        escaped = text.gsub("\\", "\\\\").gsub("(", "\\(").gsub(")", "\\)")
+        "(#{escaped})"
+      end
     end
 
     private def format_number(value : Float64) : String
