@@ -66,6 +66,12 @@ module PDF
     # Document outline (bookmarks)
     @outline : Outline?
 
+    # Encryption settings (nil = no encryption)
+    @encryption : Security::Encryption?
+
+    # Stamps (Form XObjects) — name => indirect object reference
+    @stamps : Hash(String, Objects::Indirect)
+
     def initialize
       @objects = [] of Objects::Indirect
       @pages = [] of Page
@@ -73,6 +79,7 @@ module PDF
       @fonts = {} of String => Fonts::Base
       @truetype_fonts = {} of String => Fonts::TrueTypeFont
       @named_dests = {} of String => Objects::Array
+      @stamps = {} of String => Objects::Indirect
     end
 
     # Creates a new page and yields it for content.
@@ -186,6 +193,98 @@ module PDF
       @outline ||= Outline.new(self)
     end
 
+    # Encrypts the document with password protection and permission control.
+    #
+    # ```
+    # pdf.encrypt(
+    #   user_password: "",
+    #   owner_password: "secret",
+    #   permissions: [PDF::Security::Permission::Print]
+    # )
+    # ```
+    def encrypt(
+      user_password : String = "",
+      owner_password : String = "",
+      permissions : Array(Security::Permission) = [Security::Permission::Print],
+      key_length : Int32 = 40
+    ) : Nil
+      @encryption = Security::Encryption.new(
+        user_password: user_password,
+        owner_password: owner_password,
+        permissions: permissions,
+        key_length: key_length
+      )
+    end
+
+    # Returns the encryption settings, or nil if not encrypted.
+    def encryption : Security::Encryption?
+      @encryption
+    end
+
+    # Creates a reusable stamp (Form XObject).
+    # The block receives a Page object for drawing content.
+    # Returns the indirect object reference to use with Page#stamp.
+    #
+    # ```
+    # stamp_ref = pdf.create_stamp("watermark", 200, 50) do |page|
+    #   page.fill_color(0.8, 0.8, 0.8)
+    #   page.font "Helvetica", size: 36
+    #   page.text "DRAFT", at: {10, 15}
+    # end
+    #
+    # pdf.page do |page|
+    #   page.stamp(stamp_ref)
+    # end
+    # ```
+    def create_stamp(name : String, width : Number = 612, height : Number = 792, &block : Page ->) : Objects::Reference
+      raise ArgumentError.new("Stamp name cannot be empty") if name.empty?
+      raise ArgumentError.new("Stamp '#{name}' already exists") if @stamps.has_key?(name)
+
+      # Create a temporary page for drawing
+      stamp_page = Page.new(self, width.to_f, height.to_f)
+      yield stamp_page
+
+      # Finalize the stamp page to get its content
+      stamp_page.finalize!
+
+      # Build the Form XObject
+      form_dict = Objects::Dictionary.new
+      form_dict["Type"] = Objects::Name.new("XObject")
+      form_dict["Subtype"] = Objects::Name.new("Form")
+
+      bbox = Objects::Array.new
+      bbox << Objects::Number.new(0)
+      bbox << Objects::Number.new(0)
+      bbox << Objects::Number.new(width.to_i)
+      bbox << Objects::Number.new(height.to_i)
+      form_dict["BBox"] = bbox
+
+      # Create the Form XObject as a stream with the page content
+      stream = Objects::Stream.new
+      content_str = stamp_page.content_string
+      stream.data = content_str
+      stream.add_filter(Filters::Flate.new) unless content_str.empty?
+
+      # Copy resources from the stamp page
+      resources = stamp_page.build_resources_public
+      stream["Resources"] = resources unless resources.empty?
+
+      # Merge the form dictionary into the stream
+      form_dict.each do |key, value|
+        stream[key] = value
+      end
+
+      stamp_obj = register_object(stream)
+      @stamps[name] = stamp_obj
+      stamp_obj.reference
+    end
+
+    # Returns a stamp reference by name.
+    def stamp(name : String) : Objects::Reference
+      obj = @stamps[name]? || raise ArgumentError.new("Unknown stamp: #{name}")
+      obj.reference
+    end
+
     # Saves the document to a file.
     def save(path : String) : Nil
       File.open(path, "wb") do |file|
@@ -266,6 +365,18 @@ module PDF
           dict["Outlines"] = outline_ref
         end
       end
+
+      # Add XMP metadata
+      xmp_stream = Metadata::XMP.build(
+        title: @title,
+        author: @author,
+        subject: @subject,
+        keywords: @keywords,
+        creator: @creator,
+        producer: @producer
+      )
+      xmp_obj = register_object(xmp_stream)
+      dict["Metadata"] = xmp_obj.reference
 
       register_object(dict)
     end

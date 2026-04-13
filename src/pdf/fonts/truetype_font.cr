@@ -310,6 +310,55 @@ module PDF
         end
       end
 
+      # Returns true if this font has kerning data.
+      def has_kerning? : Bool
+        @parser.has_kerning?
+      end
+
+      # Returns kerning value between two characters, scaled to 1/1000 em.
+      def kern_pair(left : Char, right : Char) : Int32
+        left_gid = @parser.glyph_id(left)
+        right_gid = @parser.glyph_id(right)
+        value = @parser.kern_pair(left_gid, right_gid)
+        (value.to_f64 * 1000 / @parser.units_per_em).round.to_i32
+      end
+
+      # Returns an array of kerning-aware text segments.
+      # Each element is either a String (text fragment) or an Int32 (kern adjustment in 1/1000 em).
+      # The kern adjustments are negated for use with the TJ operator (positive = move left).
+      def text_with_kerning(text : String) : Array(String | Int32)
+        use(text)
+        return [text] of (String | Int32) unless has_kerning?
+
+        chars = text.chars
+        return [text] of (String | Int32) if chars.size < 2
+
+        result = [] of (String | Int32)
+        current = String::Builder.new
+
+        chars.each_with_index do |char, i|
+          current << char
+          if i < chars.size - 1
+            kern_value = kern_pair(char, chars[i + 1])
+            if kern_value != 0
+              result << current.to_s
+              current = String::Builder.new
+              # PDF TJ operator: positive values move text left (tighten),
+              # but kern values are positive when glyphs should be moved apart.
+              # In TJ, negative values in the array move glyphs apart.
+              # Font kern values: negative = tighten, positive = loosen.
+              # TJ values: positive = tighten (move left), negative = loosen (move right).
+              # So we negate the kern value.
+              result << (-kern_value)
+            end
+          end
+        end
+
+        remaining = current.to_s
+        result << remaining unless remaining.empty?
+        result
+      end
+
       # Encode text for use in a content stream (returns hex string)
       #
       # For Identity-H encoding, we encode characters using their ORIGINAL
@@ -317,7 +366,7 @@ module PDF
       # to the remapped glyph IDs in the subset font.
       def encode_text(text : String) : String
         use(text)
-        
+
         String.build do |io|
           io << '<'
           text.each_char do |char|
@@ -327,6 +376,13 @@ module PDF
           end
           io << '>'
         end
+      end
+
+      # Encode a single character as a hex string for PDF content streams.
+      def encode_char(char : Char) : String
+        use(char)
+        glyph_id = @parser.glyph_id(char)
+        "<#{glyph_id.to_s(16).rjust(4, '0').upcase}>"
       end
     end
   end

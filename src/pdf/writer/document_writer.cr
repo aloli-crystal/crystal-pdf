@@ -95,6 +95,13 @@ module PDF
             io << "/Info #{ref.to_pdf}"
           end
 
+          # Add encryption dictionary if present
+          if enc = @document.encryption
+            enc_dict = enc.to_dictionary
+            enc_obj = @document.register_object(enc_dict)
+            io << "/Encrypt #{enc_obj.reference.to_pdf}"
+          end
+
           io << ">>\n"
           io << "startxref\n"
           io << xref_start

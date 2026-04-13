@@ -23,6 +23,7 @@ require "./truetype/tables/glyf"
 require "./truetype/tables/name"
 require "./truetype/tables/post"
 require "./truetype/tables/os2"
+require "./truetype/tables/kern"
 
 # Main parser and subsetter
 require "./truetype/parser"

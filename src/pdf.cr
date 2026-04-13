@@ -19,6 +19,9 @@ module PDF
 
   # PDF version to generate (1.7 = ISO 32000-1:2008)
   PDF_VERSION = "1.7"
+
+  # Upstream Prawn gem version we track for feature parity
+  UPSTREAM_VERSION = "2.5.0"
 end
 
 # Core object model (order matters - base first)
@@ -49,6 +52,7 @@ require "./pdf/fonts/base"
 require "./pdf/fonts/type1"
 require "./pdf/fonts/truetype"
 require "./pdf/fonts/truetype_font"
+require "./pdf/fonts/icon_font"
 
 # Image handling
 require "./pdf/images/base"
@@ -70,6 +74,16 @@ require "./pdf/table"
 
 # SVG rendering engine
 require "./pdf/svg"
+
+# Gradient support
+require "./pdf/gradient/gradient"
+
+# Security / Encryption
+require "./pdf/security/arcfour"
+require "./pdf/security/encryption"
+
+# XMP Metadata
+require "./pdf/metadata/xmp"
 
 # Annotations, destinations, and outline (bookmarks)
 require "./pdf/annotations"

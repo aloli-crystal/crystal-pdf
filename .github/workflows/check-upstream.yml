@@ -1,4 +1,4 @@
-name: Check upstream watzon/pdf.cr
+name: Check upstream watzon/pdf.cr and Prawn
 
 on:
   schedule:
@@ -17,7 +17,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check for upstream changes
+      - name: Check for upstream changes (watzon/pdf.cr)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -72,3 +72,54 @@ jobs:
             --title "New commits in watzon/pdf.cr ($(date +%Y-%m-%d))" \
             --body "$body" \
             --label "upstream"
+
+  check-prawn:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for new Prawn gem version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Current known Prawn version
+          KNOWN_VERSION="2.5.0"
+
+          # Fetch latest version from RubyGems API
+          LATEST=$(curl -s https://rubygems.org/api/v1/gems/prawn.json | python3 -c "import sys, json; print(json.load(sys.stdin)['version'])" 2>/dev/null || echo "$KNOWN_VERSION")
+
+          echo "Known version: $KNOWN_VERSION"
+          echo "Latest version: $LATEST"
+
+          if [ "$KNOWN_VERSION" = "$LATEST" ]; then
+            echo "Prawn is still at version $KNOWN_VERSION. No action needed."
+            exit 0
+          fi
+
+          # Check if issue already exists
+          existing=$(gh issue list --label upstream-prawn --search "New Prawn version" --state open --json number --jq 'length')
+          if [ "$existing" -gt 0 ]; then
+            echo "Open issue already exists for Prawn update, skipping."
+            exit 0
+          fi
+
+          body=$(cat <<EOF
+          A new version of the [Prawn](https://rubygems.org/gems/prawn) gem has been released.
+
+          | | Version |
+          |---|---|
+          | **Known** | \`${KNOWN_VERSION}\` |
+          | **Latest** | \`${LATEST}\` |
+
+          ### Actions
+
+          - Review the [Prawn changelog](https://github.com/prawnpdf/prawn/blob/master/CHANGELOG.md)
+          - Check for new features to port to crystal-pdf
+          - Update \`UPSTREAM_VERSION\` in \`src/pdf.cr\`
+          EOF
+          )
+
+          gh issue create \
+            --title "New Prawn version: ${LATEST} (was ${KNOWN_VERSION})" \
+            --body "$body" \
+            --label "upstream-prawn"

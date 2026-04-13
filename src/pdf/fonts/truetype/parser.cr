@@ -27,6 +27,7 @@ module PDF
         @name : Tables::Name?
         @post : Tables::Post?
         @os2 : Tables::OS2?
+        @kern : Tables::Kern?
 
         # Font type (TrueType or CFF)
         getter sfnt_version : UInt32
@@ -182,6 +183,24 @@ module PDF
             data = table_data("OS/2")
             data ? Tables::OS2.parse(data) : nil
           end
+        end
+
+        # Get the kern table (optional)
+        def kern : Tables::Kern?
+          @kern ||= begin
+            data = table_data("kern")
+            data ? Tables::Kern.parse(data) : nil
+          end
+        end
+
+        # Check if the font has a kern table
+        def has_kerning? : Bool
+          has_table?("kern")
+        end
+
+        # Get kerning value between two glyph IDs (in font units)
+        def kern_pair(left_glyph : UInt16, right_glyph : UInt16) : Int16
+          kern.try(&.kerning(left_glyph, right_glyph)) || 0_i16
         end
 
         # Get the PostScript name

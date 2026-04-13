@@ -44,6 +44,15 @@ module PDF
     # Extended graphics state resources (ExtGState object -> resource data)
     @ext_g_state_resources : Hash(UInt64, ExtGStateResources)
 
+    # Pattern resources (for gradients)
+    @pattern_resources : Hash(String, Objects::Reference)
+
+    # Shading resources (for direct shading operators)
+    @shading_resources : Hash(String, Objects::Reference)
+
+    # XObject resources for stamps (Form XObjects)
+    @stamp_resources : Hash(String, Objects::Reference)
+
     # Annots on this page (links, text notes, etc.)
     @annots : Array(Annot)
 
@@ -95,6 +104,9 @@ module PDF
       @truetype_font_resources = {} of Fonts::TrueTypeFont => TrueTypeFontResources
       @image_resources = {} of Images::Base => ImageResources
       @ext_g_state_resources = {} of UInt64 => ExtGStateResources
+      @pattern_resources = {} of String => Objects::Reference
+      @shading_resources = {} of String => Objects::Reference
+      @stamp_resources = {} of String => Objects::Reference
       @annots = [] of Annot
       @pre_allocated_id = @document.allocate_object_id
     end
@@ -227,6 +239,78 @@ module PDF
         @content << "#{format_number(x.to_f)} #{format_number(y.to_f)} Td\n" # Position
         @content << encode_text_string(content, font_name) << " Tj\n"        # Show text
         @content << "ET\n"                                                   # End text
+      end
+
+      self
+    end
+
+    # Renders an icon from a loaded icon font (e.g., FontAwesome).
+    #
+    # ```
+    # fa = pdf.load_font("./fonts/fa-solid-900.ttf")
+    # page.icon(:home, at: {72, 720}, font: fa, size: 24)
+    # ```
+    def icon(name : Symbol, *, at : Tuple(Number, Number), font icon_font : Fonts::TrueTypeFont, size : Number = 12) : self
+      char = Fonts::IconFont.char(name)
+      saved_font = @current_font
+      saved_size = @current_font_size
+      saved_ttf = @current_truetype_font
+
+      self.font(icon_font, size: size)
+      text(char, at: at)
+
+      # Restore previous font
+      @current_font = saved_font
+      @current_font_size = saved_size
+      @current_truetype_font = saved_ttf
+      self
+    end
+
+    # Draws text with kerning at the specified position.
+    # Uses the TJ operator to apply kerning adjustments between glyph pairs.
+    # Falls back to normal text rendering if no kerning data is available.
+    #
+    # ```
+    # my_font = pdf.load_font("./fonts/OpenSans-Regular.ttf")
+    # page.font my_font, size: 12
+    # page.text_kerned "AVATAR", at: {72, 720}
+    # ```
+    def text_kerned(content : String, *, at : Tuple(Number, Number)) : self
+      font_name = @current_font
+      raise "No font set. Call page.font first." unless font_name
+
+      x, y = at
+
+      if ttf_font = @current_truetype_font
+        if ttf_font.has_kerning?
+          font_key = @truetype_font_resources[ttf_font].key
+          segments = ttf_font.text_with_kerning(content)
+
+          @content << "BT\n"
+          @content << "/#{font_key} #{format_number(@current_font_size)} Tf\n"
+          @content << "#{format_number(x.to_f)} #{format_number(y.to_f)} Td\n"
+
+          # Build TJ array
+          @content << "["
+          segments.each do |segment|
+            case segment
+            when String
+              @content << ttf_font.encode_text(segment)
+            when Int32
+              @content << " #{segment} "
+            end
+          end
+          @content << "] TJ\n"
+          @content << "ET\n"
+        else
+          # No kerning, fall back to normal text
+          text(content, at: at)
+          return self
+        end
+      else
+        # Type1 fonts - no kerning support, use normal rendering
+        text(content, at: at)
+        return self
       end
 
       self
@@ -919,6 +1003,120 @@ module PDF
     end
 
     # ---------------------------------------------------------------------------
+    # Gradient Methods
+    # ---------------------------------------------------------------------------
+
+    # Fills the current path with a linear gradient.
+    #
+    # ```
+    # page.rectangle(100, 100, 200, 200)
+    # page.fill_gradient_linear(100, 100, 300, 300,
+    #   {1.0, 0.0, 0.0}, {0.0, 0.0, 1.0})
+    # ```
+    def fill_gradient_linear(
+      x1 : Number, y1 : Number,
+      x2 : Number, y2 : Number,
+      color1 : Tuple(Float64, Float64, Float64),
+      color2 : Tuple(Float64, Float64, Float64)
+    ) : self
+      pattern_obj = Gradient.linear(x1, y1, x2, y2, color1, color2, @document)
+      key = "P#{@pattern_resources.size + 1}"
+      @pattern_resources[key] = pattern_obj.reference
+
+      @content << "/Pattern cs\n"
+      @content << "/#{key} scn\n"
+      @content << "f\n"
+      self
+    end
+
+    # Strokes the current path with a linear gradient.
+    def stroke_gradient_linear(
+      x1 : Number, y1 : Number,
+      x2 : Number, y2 : Number,
+      color1 : Tuple(Float64, Float64, Float64),
+      color2 : Tuple(Float64, Float64, Float64)
+    ) : self
+      pattern_obj = Gradient.linear(x1, y1, x2, y2, color1, color2, @document)
+      key = "P#{@pattern_resources.size + 1}"
+      @pattern_resources[key] = pattern_obj.reference
+
+      @content << "/Pattern CS\n"
+      @content << "/#{key} SCN\n"
+      @content << "S\n"
+      self
+    end
+
+    # Fills the current path with a radial gradient.
+    #
+    # ```
+    # page.circle(200, 200, 100)
+    # page.fill_gradient_radial(200, 200, 0, 200, 200, 100,
+    #   {1.0, 1.0, 0.0}, {1.0, 0.0, 0.0})
+    # ```
+    def fill_gradient_radial(
+      cx1 : Number, cy1 : Number, r1 : Number,
+      cx2 : Number, cy2 : Number, r2 : Number,
+      color1 : Tuple(Float64, Float64, Float64),
+      color2 : Tuple(Float64, Float64, Float64)
+    ) : self
+      pattern_obj = Gradient.radial(cx1, cy1, r1, cx2, cy2, r2, color1, color2, @document)
+      key = "P#{@pattern_resources.size + 1}"
+      @pattern_resources[key] = pattern_obj.reference
+
+      @content << "/Pattern cs\n"
+      @content << "/#{key} scn\n"
+      @content << "f\n"
+      self
+    end
+
+    # Strokes the current path with a radial gradient.
+    def stroke_gradient_radial(
+      cx1 : Number, cy1 : Number, r1 : Number,
+      cx2 : Number, cy2 : Number, r2 : Number,
+      color1 : Tuple(Float64, Float64, Float64),
+      color2 : Tuple(Float64, Float64, Float64)
+    ) : self
+      pattern_obj = Gradient.radial(cx1, cy1, r1, cx2, cy2, r2, color1, color2, @document)
+      key = "P#{@pattern_resources.size + 1}"
+      @pattern_resources[key] = pattern_obj.reference
+
+      @content << "/Pattern CS\n"
+      @content << "/#{key} SCN\n"
+      @content << "S\n"
+      self
+    end
+
+    # ---------------------------------------------------------------------------
+    # Stamp Methods
+    # ---------------------------------------------------------------------------
+
+    # Places a stamp (Form XObject) on this page.
+    #
+    # ```
+    # stamp_ref = pdf.create_stamp("logo") do |stamp_page|
+    #   stamp_page.fill_color(:red)
+    #   stamp_page.circle(25, 25, 20)
+    #   stamp_page.fill
+    # end
+    # page.stamp(stamp_ref)
+    # ```
+    def stamp(stamp_ref : Objects::Reference, name : String? = nil) : self
+      key = name || "Stmp#{@stamp_resources.size + 1}"
+      @stamp_resources[key] = stamp_ref
+      @content << "/#{key} Do\n"
+      self
+    end
+
+    # Places a stamp at a specific position.
+    def stamp_at(stamp_ref : Objects::Reference, at : Tuple(Number, Number), name : String? = nil) : self
+      save_graphics_state
+      translate(at[0], at[1])
+      stamp(stamp_ref, name)
+      restore_graphics_state
+      self
+    end
+
+    # ---------------------------------------------------------------------------
     # Shape Helpers
     # ---------------------------------------------------------------------------
 
@@ -1132,6 +1330,16 @@ module PDF
       self
     end
 
+    # Returns the raw content string (for use by stamps).
+    def content_string : String
+      @content.to_s
+    end
+
+    # Returns a copy of the resources dictionary (for stamps).
+    def build_resources_public : Objects::Dictionary
+      build_resources
+    end
+
     # Finalizes the page, creating content stream and registering objects.
     # Called by Document#finalize!
     def finalize! : Nil
@@ -1307,8 +1515,9 @@ module PDF
         resources["Font"] = font_dict
       end
 
-      # Add XObject resources (images)
-      if !@image_resources.empty?
+      # Add XObject resources (images + stamps)
+      has_xobjects = !@image_resources.empty? || !@stamp_resources.empty?
+      if has_xobjects
         xobject_dict = Objects::Dictionary.new
 
         @image_resources.each do |_, res|
@@ -1317,7 +1526,29 @@ module PDF
           end
         end
 
+        @stamp_resources.each do |key, ref|
+          xobject_dict[key] = ref
+        end
+
         resources["XObject"] = xobject_dict unless xobject_dict.empty?
+      end
+
+      # Add Pattern resources (gradients)
+      unless @pattern_resources.empty?
+        pattern_dict = Objects::Dictionary.new
+        @pattern_resources.each do |key, ref|
+          pattern_dict[key] = ref
+        end
+        resources["Pattern"] = pattern_dict
+      end
+
+      # Add Shading resources
+      unless @shading_resources.empty?
+        shading_dict = Objects::Dictionary.new
+        @shading_resources.each do |key, ref|
+          shading_dict[key] = ref
+        end
+        resources["Shading"] = shading_dict
       end
 
       # Add ExtGState resources
