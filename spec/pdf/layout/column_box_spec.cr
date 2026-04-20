@@ -140,8 +140,8 @@ describe PDF::Layout::ColumnBox do
         x: 50.0, y: 700.0, width: 500.0, height: 600.0,
         columns: 2, spacer: 20.0,
       )
-      box.advance_column  # column 0 -> 1
-      needs_new_page = box.advance_column  # column 1 -> 0 (wrap)
+      box.advance_column                  # column 0 -> 1
+      needs_new_page = box.advance_column # column 1 -> 0 (wrap)
       needs_new_page.should be_true
       box.current_column.should eq(0)
     end

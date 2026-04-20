@@ -34,33 +34,33 @@ module PDF
         (0xA0..0xFF).each { |c| map[c] = c.to_u8 }
 
         # WinAnsi special mappings for the 0x80..0x9F range
-        map[0x20AC] = 0x80_u8  # € Euro sign
-        map[0x201A] = 0x82_u8  # ‚ Single low-9 quotation mark
-        map[0x0192] = 0x83_u8  # ƒ Latin small letter f with hook
-        map[0x201E] = 0x84_u8  # „ Double low-9 quotation mark
-        map[0x2026] = 0x85_u8  # … Horizontal ellipsis
-        map[0x2020] = 0x86_u8  # † Dagger
-        map[0x2021] = 0x87_u8  # ‡ Double dagger
-        map[0x02C6] = 0x88_u8  # ˆ Modifier letter circumflex accent
-        map[0x2030] = 0x89_u8  # ‰ Per mille sign
-        map[0x0160] = 0x8A_u8  # Š Latin capital letter S with caron
-        map[0x2039] = 0x8B_u8  # ‹ Single left-pointing angle quotation mark
-        map[0x0152] = 0x8C_u8  # Œ Latin capital ligature OE
-        map[0x017D] = 0x8E_u8  # Ž Latin capital letter Z with caron
-        map[0x2018] = 0x91_u8  # ' Left single quotation mark
-        map[0x2019] = 0x92_u8  # ' Right single quotation mark
-        map[0x201C] = 0x93_u8  # " Left double quotation mark
-        map[0x201D] = 0x94_u8  # " Right double quotation mark
-        map[0x2022] = 0x95_u8  # • Bullet
-        map[0x2013] = 0x96_u8  # – En dash
-        map[0x2014] = 0x97_u8  # — Em dash
-        map[0x02DC] = 0x98_u8  # ˜ Small tilde
-        map[0x2122] = 0x99_u8  # ™ Trade mark sign
-        map[0x0161] = 0x9A_u8  # š Latin small letter s with caron
-        map[0x203A] = 0x9B_u8  # › Single right-pointing angle quotation mark
-        map[0x0153] = 0x9C_u8  # œ Latin small ligature oe
-        map[0x017E] = 0x9E_u8  # ž Latin small letter z with caron
-        map[0x0178] = 0x9F_u8  # Ÿ Latin capital letter Y with diaeresis
+        map[0x20AC] = 0x80_u8 # € Euro sign
+        map[0x201A] = 0x82_u8 # ‚ Single low-9 quotation mark
+        map[0x0192] = 0x83_u8 # ƒ Latin small letter f with hook
+        map[0x201E] = 0x84_u8 # „ Double low-9 quotation mark
+        map[0x2026] = 0x85_u8 # … Horizontal ellipsis
+        map[0x2020] = 0x86_u8 # † Dagger
+        map[0x2021] = 0x87_u8 # ‡ Double dagger
+        map[0x02C6] = 0x88_u8 # ˆ Modifier letter circumflex accent
+        map[0x2030] = 0x89_u8 # ‰ Per mille sign
+        map[0x0160] = 0x8A_u8 # Š Latin capital letter S with caron
+        map[0x2039] = 0x8B_u8 # ‹ Single left-pointing angle quotation mark
+        map[0x0152] = 0x8C_u8 # Œ Latin capital ligature OE
+        map[0x017D] = 0x8E_u8 # Ž Latin capital letter Z with caron
+        map[0x2018] = 0x91_u8 # ' Left single quotation mark
+        map[0x2019] = 0x92_u8 # ' Right single quotation mark
+        map[0x201C] = 0x93_u8 # " Left double quotation mark
+        map[0x201D] = 0x94_u8 # " Right double quotation mark
+        map[0x2022] = 0x95_u8 # • Bullet
+        map[0x2013] = 0x96_u8 # – En dash
+        map[0x2014] = 0x97_u8 # — Em dash
+        map[0x02DC] = 0x98_u8 # ˜ Small tilde
+        map[0x2122] = 0x99_u8 # ™ Trade mark sign
+        map[0x0161] = 0x9A_u8 # š Latin small letter s with caron
+        map[0x203A] = 0x9B_u8 # › Single right-pointing angle quotation mark
+        map[0x0153] = 0x9C_u8 # œ Latin small ligature oe
+        map[0x017E] = 0x9E_u8 # ž Latin small letter z with caron
+        map[0x0178] = 0x9F_u8 # Ÿ Latin capital letter Y with diaeresis
         map
       end
 

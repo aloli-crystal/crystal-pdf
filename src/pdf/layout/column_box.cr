@@ -11,8 +11,8 @@ module PDF
     #   width: 500.0, height: 600.0,
     #   columns: 2, spacer: 12.0,
     # )
-    # col_box.column_width  # => 244.0
-    # col_box.current_column  # => 0
+    # col_box.column_width   # => 244.0
+    # col_box.current_column # => 0
     # ```
     class ColumnBox < BoundingBox
       # Number of columns
@@ -31,7 +31,7 @@ module PDF
         height : Float64? = nil,
         parent : BoundingBox? = nil,
         @columns : Int32 = 2,
-        @spacer : Float64 = 12.0
+        @spacer : Float64 = 12.0,
       )
         super(x: x, y: y, box_width: width, fixed_height: height, parent: parent)
         @current_column = 0

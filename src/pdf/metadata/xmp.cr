@@ -15,7 +15,7 @@ module PDF
         creator : String? = nil,
         producer : String = "pdf.cr #{PDF::VERSION}",
         creation_date : Time = Time.utc,
-        modification_date : Time = Time.utc
+        modification_date : Time = Time.utc,
       ) : Objects::Stream
         xml = generate_xml(
           title: title,
@@ -45,7 +45,7 @@ module PDF
         creator : String?,
         producer : String,
         creation_date : Time,
-        modification_date : Time
+        modification_date : Time,
       ) : String
         create_iso = xmp_date(creation_date)
         modify_iso = xmp_date(modification_date)
@@ -121,9 +121,9 @@ module PDF
       # Escape XML special characters
       private def self.escape_xml(text : String) : String
         text.gsub('&', "&amp;")
-            .gsub('<', "&lt;")
-            .gsub('>', "&gt;")
-            .gsub('"', "&quot;")
+          .gsub('<', "&lt;")
+          .gsub('>', "&gt;")
+          .gsub('"', "&quot;")
       end
     end
   end

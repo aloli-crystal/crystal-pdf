@@ -57,7 +57,7 @@ module PDF
         @user_password : String = "",
         @owner_password : String = "",
         permissions : Array(Permission) = [Permission::Print],
-        key_length : Int32 = 40
+        key_length : Int32 = 40,
       )
         # Validate key length
         unless key_length == 40 || key_length == 128

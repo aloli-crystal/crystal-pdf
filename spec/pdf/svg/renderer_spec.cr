@@ -31,7 +31,7 @@ describe PDF::SVG::Parser do
     it "parses dimensions with units" do
       svg = %(<svg width="2in" height="3cm" xmlns="http://www.w3.org/2000/svg"></svg>)
       parser = PDF::SVG::Parser.new(svg)
-      parser.width.should be_close(144.0, 0.1) # 2 * 72
+      parser.width.should be_close(144.0, 0.1)  # 2 * 72
       parser.height.should be_close(85.04, 0.1) # 3 * 28.3465
     end
   end

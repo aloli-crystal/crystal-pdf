@@ -85,7 +85,7 @@ describe PDF::Security::Encryption do
         ]
       )
       (enc.permissions_value & 4).should eq(4)   # Print
-      (enc.permissions_value & 16).should eq(16)  # Copy
+      (enc.permissions_value & 16).should eq(16) # Copy
     end
 
     it "denies modify when not in permissions list" do

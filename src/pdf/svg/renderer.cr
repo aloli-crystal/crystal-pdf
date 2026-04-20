@@ -38,7 +38,7 @@ module PDF
         x : Float64 = 0.0,
         y : Float64 = 0.0,
         width : Float64? = nil,
-        height : Float64? = nil
+        height : Float64? = nil,
       )
         @x = x
         @y = y
@@ -94,37 +94,27 @@ module PDF
           apply_styles(node)
           node.children.each { |child| render_element(child) }
           page.restore_graphics_state
-
         when "rect"
           draw_rect(node)
-
         when "circle"
           draw_circle(node)
-
         when "ellipse"
           draw_ellipse(node)
-
         when "line"
           draw_line(node)
-
         when "polyline"
           draw_polyline(node)
-
         when "polygon"
           draw_polygon(node)
-
         when "path"
           draw_path(node)
-
         when "text"
           draw_text(node)
-
         when "svg"
           # Nested SVG - process children
           page.save_graphics_state
           node.children.each { |child| render_element(child) }
           page.restore_graphics_state
-
         when "defs", "title", "desc", "metadata", "style"
           # Skip non-renderable elements
 

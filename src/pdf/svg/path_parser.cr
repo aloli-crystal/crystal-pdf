@@ -57,7 +57,6 @@ module PDF
             subpath_start_y = y
             # Subsequent coordinates are treated as line-to
             last_command = relative ? 'l' : 'L'
-
           when 'L'
             x, y = consume_pair(tokens, i)
             i += 2
@@ -68,21 +67,18 @@ module PDF
             commands << PathCommand.new('L', [x, y])
             current_x = x
             current_y = y
-
           when 'H'
             x = consume_number(tokens, i)
             i += 1
             x += current_x if relative
             commands << PathCommand.new('L', [x, current_y])
             current_x = x
-
           when 'V'
             y = consume_number(tokens, i)
             i += 1
             y += current_y if relative
             commands << PathCommand.new('L', [current_x, y])
             current_y = y
-
           when 'C'
             x1, y1 = consume_pair(tokens, i)
             i += 2
@@ -100,7 +96,6 @@ module PDF
             last_control_y = y2
             current_x = x
             current_y = y
-
           when 'S'
             x2, y2 = consume_pair(tokens, i)
             i += 2
@@ -118,7 +113,6 @@ module PDF
             last_control_y = y2
             current_x = x
             current_y = y
-
           when 'Q'
             cx, cy = consume_pair(tokens, i)
             i += 2
@@ -138,7 +132,6 @@ module PDF
             last_control_y = cy
             current_x = x
             current_y = y
-
           when 'T'
             x, y = consume_pair(tokens, i)
             i += 2
@@ -157,7 +150,6 @@ module PDF
             last_control_y = cy
             current_x = x
             current_y = y
-
           when 'A'
             rx = consume_number(tokens, i); i += 1
             ry = consume_number(tokens, i); i += 1
@@ -174,7 +166,6 @@ module PDF
             commands << PathCommand.new('L', [x, y])
             current_x = x
             current_y = y
-
           when 'Z'
             commands << PathCommand.new('Z')
             current_x = subpath_start_x

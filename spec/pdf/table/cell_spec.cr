@@ -103,7 +103,7 @@ describe PDF::Table::Cell do
       cell = PDF::Table::Cell.new("Test")
       cell.width = 100.0
       cell.height = 50.0
-      cell.content_width.should eq(90.0) # 100 - 5 - 5
+      cell.content_width.should eq(90.0)  # 100 - 5 - 5
       cell.content_height.should eq(40.0) # 50 - 5 - 5
     end
   end

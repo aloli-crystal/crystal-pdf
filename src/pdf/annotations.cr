@@ -33,7 +33,7 @@ module PDF
       annot = new
       annot.dict["Subtype"] = Objects::Name.new("Link")
       annot.dict["Rect"] = build_rect(rect)
-      annot.dict["Border"] = Objects::Array.new([0, 0, 0])  # No visible border
+      annot.dict["Border"] = Objects::Array.new([0, 0, 0]) # No visible border
 
       # URI action dictionary
       action = Objects::Dictionary.new

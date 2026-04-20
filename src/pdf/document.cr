@@ -213,7 +213,7 @@ module PDF
       user_password : String = "",
       owner_password : String = "",
       permissions : Array(Security::Permission) = [Security::Permission::Print],
-      key_length : Int32 = 40
+      key_length : Int32 = 40,
     ) : Nil
       @encryption = Security::Encryption.new(
         user_password: user_password,

@@ -70,7 +70,7 @@ describe PDF::Fonts::Type1 do
       font = PDF::Fonts::Type1.new("Helvetica")
       # Character outside WinAnsi range (null, CJK, etc.)
       font.glyph_width('\u0000').should eq(0)
-      font.glyph_width('\u4E2D').should eq(0)  # Chinese character
+      font.glyph_width('\u4E2D').should eq(0) # Chinese character
     end
 
     it "returns correct width for accented Latin characters" do
@@ -112,22 +112,22 @@ describe PDF::Fonts::Type1 do
     it "encodes em dash to WinAnsi" do
       font = PDF::Fonts::Type1.new("Helvetica")
       bytes = font.encode_text("A\u2014B") # A—B
-      bytes[0].should eq(0x41_u8) # A
-      bytes[1].should eq(0x97_u8) # em dash in WinAnsi
-      bytes[2].should eq(0x42_u8) # B
+      bytes[0].should eq(0x41_u8)          # A
+      bytes[1].should eq(0x97_u8)          # em dash in WinAnsi
+      bytes[2].should eq(0x42_u8)          # B
     end
 
     it "encodes smart quotes and bullets" do
       font = PDF::Fonts::Type1.new("Helvetica")
       bytes = font.encode_text("\u201Ctest\u201D") # "test"
-      bytes[0].should eq(0x93_u8) # left double quote
-      bytes[5].should eq(0x94_u8) # right double quote
+      bytes[0].should eq(0x93_u8)                  # left double quote
+      bytes[5].should eq(0x94_u8)                  # right double quote
     end
 
     it "replaces unmappable characters with ?" do
       font = PDF::Fonts::Type1.new("Helvetica")
       bytes = font.encode_text("A\u4E2DB") # Chinese character
-      bytes[1].should eq(0x3F_u8) # ?
+      bytes[1].should eq(0x3F_u8)          # ?
     end
 
     it "encodes euro sign" do

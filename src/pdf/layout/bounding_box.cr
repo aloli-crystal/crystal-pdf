@@ -13,9 +13,9 @@ module PDF
     #   x: 50.0, y: 700.0,
     #   width: 400.0, height: 300.0,
     # )
-    # box.cursor        # => 300.0 (top of the box)
+    # box.cursor # => 300.0 (top of the box)
     # box.move_down(20)
-    # box.cursor        # => 280.0
+    # box.cursor # => 280.0
     # ```
     class BoundingBox
       # Absolute x-coordinate of the top-left corner
@@ -50,7 +50,7 @@ module PDF
         @y : Float64,
         @box_width : Float64,
         @fixed_height : Float64? = nil,
-        @parent : BoundingBox? = nil
+        @parent : BoundingBox? = nil,
       )
         @cursor_y = 0.0
         @stretched_height = 0.0

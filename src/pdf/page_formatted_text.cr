@@ -36,7 +36,7 @@ module PDF
       overflow : Symbol = :truncate,
       leading : Number = 0,
       font_name : String = "Helvetica",
-      font_size : Number = 12
+      font_size : Number = 12,
     ) : Array(Text::Formatted::FragmentHash)
       box = Text::Formatted::Box.new(
         formatted_text: fragments,

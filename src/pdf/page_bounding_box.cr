@@ -96,7 +96,7 @@ module PDF
         align : Symbol = :left,
         leading : Number = 0,
         font_name : String = "Helvetica",
-        font_size : Number = 12
+        font_size : Number = 12,
       ) : Array(Text::Formatted::FragmentHash)
         abs_pos = @box.to_absolute({0.0, @box.height - @box.cursor})
         remaining_height = @box.cursor
@@ -178,7 +178,7 @@ module PDF
         align : Symbol = :left,
         leading : Number = 0,
         font_name : String = "Helvetica",
-        font_size : Number = 12
+        font_size : Number = 12,
       ) : Array(Text::Formatted::FragmentHash)
         remaining = fragments
 

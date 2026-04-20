@@ -21,7 +21,7 @@ module PDF
       column_widths : Array(Float64)? = nil,
       table_width : Float64? = nil,
       cell_style : Hash(Symbol, String | Float64 | Bool | Nil)? = nil,
-      row_colors : Array(String)? = nil
+      row_colors : Array(String)? = nil,
     ) : Table
       table = Table.new(
         data: data,

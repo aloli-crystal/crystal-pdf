@@ -76,7 +76,7 @@ module PDF
           @leading : Float64 = 0.0,
           @document : Document,
           @font_name : String = "Helvetica",
-          @font_size : Float64 = 12.0
+          @font_size : Float64 = 12.0,
         )
           @formatted_text = formatted_text
         end

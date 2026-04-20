@@ -22,7 +22,7 @@ module PDF
       x2 : Number, y2 : Number,
       color1 : Tuple(Float64, Float64, Float64),
       color2 : Tuple(Float64, Float64, Float64),
-      document : Document
+      document : Document,
     ) : Objects::Indirect
       build_gradient(:axial, x1, y1, x2, y2, 0, 0, color1, color2, document)
     end
@@ -36,7 +36,7 @@ module PDF
       cx2 : Number, cy2 : Number, r2 : Number,
       color1 : Tuple(Float64, Float64, Float64),
       color2 : Tuple(Float64, Float64, Float64),
-      document : Document
+      document : Document,
     ) : Objects::Indirect
       build_gradient(:radial, cx1, cy1, cx2, cy2, r1, r2, color1, color2, document)
     end
@@ -46,7 +46,7 @@ module PDF
       cx : Number, cy : Number, r : Number,
       color1 : Tuple(Float64, Float64, Float64),
       color2 : Tuple(Float64, Float64, Float64),
-      document : Document
+      document : Document,
     ) : Objects::Indirect
       radial(cx, cy, 0, cx, cy, r, color1, color2, document)
     end
@@ -58,7 +58,7 @@ module PDF
       r1 : Number, r2 : Number,
       color1 : Tuple(Float64, Float64, Float64),
       color2 : Tuple(Float64, Float64, Float64),
-      document : Document
+      document : Document,
     ) : Objects::Indirect
       # Create the interpolation function (Type 2 = exponential)
       func_dict = Objects::Dictionary.new
