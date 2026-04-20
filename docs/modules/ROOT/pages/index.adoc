@@ -13,6 +13,7 @@ Combines a low-level PDF engine (ported from https://github.com/watzon/pdf.cr[wa
 * *Bounding boxes* -- nested coordinate systems and multi-column layouts
 * *Tables* -- cell-based table rendering with headers and styling
 * *SVG* -- render SVG graphics (rect, circle, line, path, polygon, text)
+* *PDF reader* -- open existing PDF files, inspect indirect objects and pages, prepare incremental updates (since 0.3.0)
 
 == AsciiDoc-to-PDF Converter Features
 

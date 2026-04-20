@@ -45,6 +45,25 @@ end
 File.open("output.pdf", "w") { |f| doc.write(f) }
 ----
 
+== Reading an Existing PDF
+
+Since 0.3.0, `PDF::Reader` opens an existing PDF, parses its object graph
+and exposes pages and indirect objects.
+
+[source,crystal]
+----
+require "pdf"
+
+reader = PDF::Reader.open("document.pdf")
+
+puts "PDF version: #{reader.version}"
+puts "Page count:  #{reader.pages.size}"
+
+reader.pages.each_with_index do |page, i|
+  puts "Page #{i + 1}: #{page.width} x #{page.height}"
+end
+----
+
 == Command-line Interface
 
 [source,bash]

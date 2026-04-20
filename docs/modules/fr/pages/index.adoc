@@ -13,6 +13,7 @@ Combine un moteur PDF bas niveau (porte de https://github.com/watzon/pdf.cr[watz
 * *Boites englobantes* -- systemes de coordonnees imbriques et mise en page multi-colonnes
 * *Tableaux* -- rendu de tableaux avec en-tetes et style
 * *SVG* -- rendu de graphiques SVG
+* *Lecteur PDF* -- ouverture de fichiers PDF existants, inspection des objets indirects et des pages, preparation aux mises a jour incrementales (depuis 0.3.0)
 
 == Fonctionnalites du convertisseur AsciiDoc vers PDF
 
