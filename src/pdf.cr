@@ -90,6 +90,11 @@ require "./pdf/annotations"
 require "./pdf/destinations"
 require "./pdf/outline"
 
+# PDF reader (analyseur et lecteur)
+require "./pdf/parser"
+require "./pdf/reader_page"
+require "./pdf/reader"
+
 # Document structure
 require "./pdf/document"
 require "./pdf/page"
