@@ -272,7 +272,13 @@ module PDF
             px3, py3 = svg_to_pdf(cmd.args[4], cmd.args[5])
             page.curve_to(px1, py1, px2, py2, px3, py3)
           when 'Z'
-            page.close_stroke
+            # Close the subpath only. The fill/stroke decision is made
+            # below in `apply_fill_and_stroke`; calling `close_stroke`
+            # here would consume the path and leave nothing for the
+            # fill operator, which is why SVGs with closed shapes
+            # (e.g. country flags) used to render as a thin outline
+            # instead of filled colour bands.
+            page.close_path
           end
         end
 

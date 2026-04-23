@@ -7,6 +7,20 @@ All notable changes to crystal-pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v0.3.2 — 2026-04-23
+
+=== Fixed
+
+* **SVG `Z` path command**: `renderer.cr` used `page.close_stroke` to
+  terminate a subpath on `Z`, which emits the PDF `s` operator
+  (close + stroke). That consumed the current path, so the
+  subsequent call to `apply_fill_and_stroke` had nothing left to
+  fill. Visually, closed SVG shapes rendered as thin outlines
+  instead of filled colour regions — country flag SVGs in
+  particular showed empty boxes instead of bands of colour. Switched
+  to `page.close_path` (PDF `h` operator) so the path stays alive
+  for the fill / stroke decision.
+
 == v0.3.1 — 2026-04-23
 
 === Fixed
