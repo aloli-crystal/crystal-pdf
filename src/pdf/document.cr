@@ -78,6 +78,11 @@ module PDF
     # are created only once and referenced by all pages.
     getter finalized_ttf_refs : Hash(Fonts::TrueTypeFont, Objects::Reference)
 
+    # Cache of SVG parsers keyed by the source string. Rendering the same
+    # SVG document multiple times (e.g. repeated country flags in a
+    # table column) avoids re-running the XML parser.
+    @svg_parsers : Hash(String, SVG::Parser)
+
     def initialize
       @objects = [] of Objects::Indirect
       @pages = [] of Page
@@ -87,6 +92,15 @@ module PDF
       @named_dests = {} of String => Objects::Array
       @stamps = {} of String => Objects::Indirect
       @finalized_ttf_refs = {} of Fonts::TrueTypeFont => Objects::Reference
+      @svg_parsers = {} of String => SVG::Parser
+    end
+
+    # Returns a cached `SVG::Parser` for `svg_data`, parsing on demand.
+    # Two calls with identical strings return the same parser instance,
+    # which avoids re-running the XML parser when the same SVG is drawn
+    # multiple times on the same document.
+    def svg_parser_for(svg_data : String) : SVG::Parser
+      @svg_parsers[svg_data] ||= SVG::Parser.new(svg_data)
     end
 
     # Creates a new page and yields it for content.

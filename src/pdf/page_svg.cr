@@ -13,7 +13,10 @@ module PDF
       width : Float64? = nil,
       height : Float64? = nil,
     ) : SVG::Renderer
-      parser = SVG::Parser.new(svg_data)
+      # Reuse a cached parser when the same SVG string is rendered
+      # multiple times on the same document (typical for repeated
+      # country flags in a table). The cache is document-scoped.
+      parser = document.svg_parser_for(svg_data)
       renderer = SVG::Renderer.new(
         self,
         parser,
