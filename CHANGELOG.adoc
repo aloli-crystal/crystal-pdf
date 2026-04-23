@@ -7,6 +7,16 @@ All notable changes to crystal-pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v0.3.3 — 2026-04-23
+
+=== Added
+
+* **SVG parser cache**. `PDF::Document` now caches `SVG::Parser`
+  instances per source string, so drawing the same SVG multiple
+  times on the same document (typical for repeated country flags
+  in a table) no longer re-runs the XML parser on every call.
+  Exposed via `Document#svg_parser_for(svg_data)`.
+
 == v0.3.2 — 2026-04-23
 
 === Fixed
