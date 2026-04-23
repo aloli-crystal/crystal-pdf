@@ -1,52 +1,82 @@
-# Journal des modifications
+= Journal des modifications
+:toc: left
+:toc-title: Versions
+:toclevels: 2
 
-Toutes les évolutions notables de crystal-pdf sont consignées ici.
-Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
-et le versionnage respecte [SemVer](https://semver.org/lang/fr/).
+Toutes les évolutions notables de crystal-pdf sont consignées ici. Le
+format suit https://keepachangelog.com/fr/1.1.0/[Keep a Changelog] et
+le versionnage respecte https://semver.org/lang/fr/[SemVer].
 
-## [0.3.0] — 20 avril 2026
+== v0.3.2 — 2026-04-23
 
-### Ajouts
+=== Corrections
 
-- Lecture de fichiers PDF existants via le nouveau module `PDF::Reader`
-  (parseur syntaxique, accès aux pages et aux objets indirects, préparation
-  à la sauvegarde en mise à jour incrémentale).
-- Specs associées (`spec/pdf/parser_spec.cr`, `spec/pdf/reader_spec.cr`) et
-  fixtures générées par `spec/fixtures/generate_fixtures.cr`.
+* **Commande `Z` des paths SVG** : `renderer.cr` utilisait
+  `page.close_stroke` pour terminer un sous-chemin sur `Z`, ce qui
+  émet l'opérateur PDF `s` (close + stroke). Le chemin courant
+  était alors consommé et l'appel suivant à `apply_fill_and_stroke`
+  n'avait plus rien à remplir. Visuellement, les formes SVG
+  fermées apparaissaient comme de fins contours plutôt que comme
+  des zones remplies — en particulier les drapeaux de pays
+  affichaient des carrés vides au lieu de bandes de couleur. Passé
+  à `page.close_path` (opérateur PDF `h`) pour que le chemin reste
+  disponible pour le choix fill/stroke.
 
-### Modifications
+== v0.3.1 — 2026-04-23
 
-- Passe `crystal tool format` sur l'ensemble du code existant.
+=== Corrections
 
-## [0.2.0] — 13 avril 2026
+* **Tokenizer du `path_parser` SVG** : correction d'une boucle infinie
+  déclenchée par certaines chaînes de commandes compactes. Quand un
+  nombre se terminait par un `.` immédiatement suivi d'un autre `.`
+  commençant le nombre suivant (par ex. `4.4.8` ou `3 0.5.7`, motifs
+  fréquents dans les SVG compacts de drapeaux), la boucle interne de
+  parsing de nombre sortait sur le même `.` qu'elle venait d'arrêter
+  sans avancer `i`, et la boucle externe tournait indéfiniment à 100 %
+  CPU. Le correctif fait consommer de manière inconditionnelle le
+  premier caractère d'un token numérique.
+* Ajout de specs `PDF::SVG::PathParser` couvrant le cas dégénéré et
+  un extrait du path Brésil qui bloquait auparavant.
 
-### Ajouts
+== v0.3.0 — 2026-04-20
 
-- Portage de six fonctionnalités Prawn : crénage, dégradés, chiffrement,
+=== Ajouts
+
+* Lecture de fichiers PDF existants via le nouveau module `PDF::Reader`
+  (parseur syntaxique, accès aux pages et aux objets indirects,
+  préparation à la sauvegarde en mise à jour incrémentale).
+* Specs associées (`spec/pdf/parser_spec.cr`, `spec/pdf/reader_spec.cr`)
+  et fixtures générées par `spec/fixtures/generate_fixtures.cr`.
+
+=== Modifications
+
+* Passe `crystal tool format` sur l'ensemble du code existant.
+
+== v0.2.0 — 2026-04-13
+
+=== Ajouts
+
+* Portage de six fonctionnalités Prawn : crénage, dégradés, chiffrement,
   métadonnées XMP, tampons (stamps) et polices d'icônes.
 
-### Corrections
+=== Corrections
 
-- Encodage UTF-8 correct pour les polices Type1 (WinAnsiEncoding).
-- Références partagées des polices TrueType.
+* Encodage UTF-8 correct pour les polices Type1 (WinAnsiEncoding).
+* Références partagées des polices TrueType.
 
-### Autres
+=== Autres
 
-- Exclusions ameba complétées pour la CI.
+* Exclusions ameba complétées pour la CI.
 
-## [0.1.0] — 10 avril 2026
+== v0.1.0 — 2026-04-10
 
-### Ajouts
+=== Ajouts
 
-- Première version publiée : moteur PDF bas niveau porté de
-  [watzon/pdf.cr](https://github.com/watzon/pdf.cr), lui-même inspiré de la
-  gem Ruby Prawn.
-- Couverture : pages multiples, polices Type1 et TrueType (Unicode),
-  graphiques vectoriels, images JPEG/PNG, texte formaté, boîtes englobantes
-  et colonnes, tableaux, rendu SVG.
-- Workflows CI et surveillance upstream.
-- Jeu de tests initial.
-
-[0.3.0]: https://github.com/aloli-crystal/crystal-pdf/compare/v0.2.0...v0.3.0
-[0.2.0]: https://github.com/aloli-crystal/crystal-pdf/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/aloli-crystal/crystal-pdf/releases/tag/v0.1.0
+* Première version publiée : moteur PDF bas niveau porté de
+  https://github.com/watzon/pdf.cr[watzon/pdf.cr], lui-même inspiré
+  de la gem Ruby Prawn.
+* Couverture : pages multiples, polices Type1 et TrueType (Unicode),
+  graphiques vectoriels, images JPEG/PNG, texte formaté, boîtes
+  englobantes et colonnes, tableaux, rendu SVG.
+* Workflows CI et surveillance upstream.
+* Jeu de tests initial.
