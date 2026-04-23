@@ -189,7 +189,10 @@ module PDF
           elsif c == '-' || c == '+' || c == '.' || c.ascii_number?
             # Parse a number
             start = i
-            i += 1 if c == '-' || c == '+'
+            # Always consume the first character: otherwise a sequence
+            # like `4.4.8` (end-of-number `.` adjacent to start-of-next `.`)
+            # leaves `i` unchanged and the outer loop spins forever.
+            i += 1
             has_dot = (c == '.')
             while i < data.size
               nc = data[i]
