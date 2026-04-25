@@ -156,5 +156,40 @@ describe PDF::Reader do
       # Nettoyer
       File.delete(output) if File.exists?(output)
     end
+
+    # Régression pour le crash « Invalid Int32: "" » qui se
+    # déclenchait lors de la réouverture d'un PDF amendé contenant
+    # des octets ≥ 0x80 (typiquement un content stream FlateDecode
+    # ou n'importe quel content stream binaire). La vraie cause :
+    # `find_xref_offset` utilisait `String#rindex` qui retourne un
+    # offset en caractères (UTF-8), désynchronisé de l'offset en
+    # octets dès qu'un caractère multi-octet apparaît dans la zone
+    # de recherche. Le scan est désormais purement octet-à-octet.
+    it "réouvre un PDF amendé contenant des octets binaires (≥ 0x80)" do
+      source = File.join(fixtures_dir, "single_page.pdf")
+      output = File.join(fixtures_dir, "modified_binary_output.pdf")
+
+      reader = PDF::Reader.open(source)
+      reader.pages.each do |page|
+        # Content stream avec une rampe d'octets 0..255 — couvre
+        # toute la plage UTF-8 (0x80-0xFF inclus) qui déclenche le
+        # bug d'index char vs octet.
+        page.add_content_stream(String.build do |io|
+          io << "q\n"
+          256.times { |b| io.write_byte((b % 256).to_u8) }
+          io << "\nQ\n"
+        end)
+      end
+      reader.save(output)
+
+      begin
+        # Avant le fix, cette ligne crashait avec
+        # `ArgumentError: Invalid Int32: ""`.
+        reader2 = PDF::Reader.open(output)
+        reader2.page_count.should eq(1)
+      ensure
+        File.delete(output) if File.exists?(output)
+      end
+    end
   end
 end

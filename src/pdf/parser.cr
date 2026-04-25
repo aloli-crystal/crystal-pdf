@@ -429,20 +429,52 @@ module PDF
       end
     end
 
-    # Cherche l'offset de la table xref en partant de la fin
+    # Cherche l'offset de la table xref en partant de la fin.
+    #
+    # NOTE : la recherche est faite **au niveau octet**, sans passer
+    # par `String#rindex`. Un PDF amendé par mise à jour incrémentale
+    # (PDF spec § 7.5.6) contient typiquement un content stream
+    # FlateDecode juste avant le second `startxref` ; ces octets
+    # binaires (≥ 0x80) forment souvent des séquences UTF-8
+    # multi-octets qui décalent les indices retournés par
+    # `String#rindex` (qui compte des caractères, pas des octets).
+    # Le résultat : `@pos = search_start + idx + 9` tombait à côté
+    # et `read_int` lisait une chaîne vide → `Invalid Int32 ""`.
     def find_xref_offset : Int64
-      # Chercher "startxref" dans les 1024 derniers octets
+      # Chercher "startxref" dans les 1024 derniers octets, en
+      # parcourant les octets en arrière depuis la fin du fichier.
+      needle = "startxref".to_slice
       search_start = {0_i64, @data.size.to_i64 - 1024}.max
-      search_area = String.new(@data[search_start..])
-
-      idx = search_area.rindex("startxref")
+      idx = byte_rindex(@data, needle, search_start)
       raise "Table xref introuvable" unless idx
 
-      # Se positionner après "startxref"
-      @pos = search_start + idx + 9
+      # Se positionner juste après "startxref"
+      @pos = idx + needle.size
       skip_whitespace
-      offset = read_int.to_i64
-      offset
+      read_int.to_i64
+    end
+
+    # Cherche la dernière occurrence de `needle` dans `haystack`,
+    # à partir de l'offset `from` inclus. Retourne `nil` si absente.
+    # Comparaison purement octet-à-octet — n'utilise pas la sémantique
+    # de String / d'UTF-8 (cf. `find_xref_offset` pour le pourquoi).
+    private def byte_rindex(haystack : Bytes, needle : Bytes, from : Int64) : Int64?
+      return nil if needle.size == 0 || needle.size > haystack.size - from
+      i = haystack.size.to_i64 - needle.size
+      while i >= from
+        match = true
+        j = 0
+        while j < needle.size
+          if haystack[i + j] != needle[j]
+            match = false
+            break
+          end
+          j += 1
+        end
+        return i if match
+        i -= 1
+      end
+      nil
     end
 
     # Analyse la table xref traditionnelle

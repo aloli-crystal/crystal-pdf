@@ -7,6 +7,36 @@ All notable changes to crystal-pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v0.3.4 — 2026-04-25
+
+=== Fixed
+
+* **Reading back PDFs amended via `add_content_stream`**.
+  `PDF::Reader.open` crashed with `Invalid Int32: ""` (raised from
+  `find_xref_offset`) when re-opening any PDF that contained a
+  binary content stream — typically a stream with bytes ≥ 0x80,
+  produced by `crystal-watermark`, `crystal-combine-pdf` and any
+  other downstream library that appends content via the incremental
+  update mechanism (PDF spec § 7.5.6).
+
+  Root cause: `find_xref_offset` searched for `"startxref"` via
+  `String#rindex`, which returns an offset in **characters** (UTF-8).
+  As soon as a multi-byte UTF-8 sequence appeared in the search
+  area (any byte ≥ 0x80 followed by a continuation byte), the
+  character offset diverged from the byte offset, and
+  `@pos = search_start + idx + 9` landed past the real `startxref`
+  marker. `read_int` then read an empty string and crashed.
+
+  Fix: scan the raw bytes directly via a new private
+  `byte_rindex(haystack, needle, from)` helper. No interpretation
+  of the bytes as UTF-8 — the search is purely byte-level and
+  immune to the encoding of the surrounding content streams.
+
+* New regression test in `spec/pdf/reader_spec.cr` ("réouvre un PDF
+  amendé contenant des octets binaires (≥ 0x80)") that amends a PDF
+  with a content stream covering the full byte range 0..255 and
+  asserts `PDF::Reader.open` returns the correct page count.
+
 == v0.3.3 — 2026-04-23
 
 === Added
