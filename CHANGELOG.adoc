@@ -7,6 +7,18 @@ All notable changes to crystal-pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v0.3.5 — 2026-04-26
+
+=== Added
+
+* **`TrueTypeFont#has_glyph?(char)`** — reports whether the font
+  contains a glyph for `char` (i.e. the character will render as
+  something other than the `.notdef` tofu box). Lets callers
+  build a font fallback chain : if the primary font reports
+  `false`, try the next font in the chain instead of letting a
+  silent tofu box ship in the PDF. Used by crystal-asciidoctor-pdf
+  v2.3.24.12+ to drive its WinAnsi sanitiser more accurately.
+
 == v0.3.4 — 2026-04-25
 
 === Fixed

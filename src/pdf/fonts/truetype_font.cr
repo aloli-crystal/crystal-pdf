@@ -76,6 +76,18 @@ module PDF
         text.each_char { |c| use(c) }
       end
 
+      # Returns `true` when this font contains a glyph for `char`,
+      # i.e. `char` will render as something other than the `.notdef`
+      # tofu box.
+      #
+      # Useful for callers that maintain a fallback font chain : if
+      # the primary font reports `has_glyph?(c) == false`, try the
+      # next font (or substitute a placeholder) instead of letting a
+      # silent tofu box ship in the PDF.
+      def has_glyph?(char : Char) : Bool
+        @parser.glyph_id(char) != 0_u16
+      end
+
       # Get the glyph width in 1/1000 of the font's em-square
       def glyph_width(char : Char) : Int32
         glyph_id = @parser.glyph_id(char)

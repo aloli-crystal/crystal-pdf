@@ -7,6 +7,19 @@ Toutes les évolutions notables de crystal-pdf sont consignées ici. Le
 format suit https://keepachangelog.com/fr/1.1.0/[Keep a Changelog] et
 le versionnage respecte https://semver.org/lang/fr/[SemVer].
 
+== v0.3.5 — 2026-04-26
+
+=== Ajouts
+
+* **`TrueTypeFont#has_glyph?(char)`** — indique si la police
+  contient un glyphe pour `char` (i.e. le caractère sera rendu
+  comme autre chose que le carré tofu `.notdef`). Permet aux
+  appelants de construire une chaîne de fallback de polices :
+  si la police primaire retourne `false`, essayer la suivante
+  au lieu de laisser un tofu silencieux dans le PDF. Utilisé par
+  crystal-asciidoctor-pdf v2.3.24.12+ pour piloter son sanitiseur
+  WinAnsi plus finement.
+
 == v0.3.4 — 2026-04-25
 
 === Corrections
