@@ -35,13 +35,25 @@ module PDF
     # Position courante dans le flux d'octets
     @pos : Int64
 
+    # Repositionne le curseur de lecture (utilisé par les
+    # sous-parsers d'object streams).
+    def seek(offset : Int64) : Nil
+      @pos = offset
+    end
+
     def initialize(@data : Bytes)
       @pos = 0_i64
       @xref = {} of Int32 => Int64
       @trailer = Objects::Dictionary.new
       @version = ""
       @objects = {} of Int32 => Objects::Indirect
+      @compressed_objects = {} of Int32 => Tuple(Int32, Int32)
     end
+
+    # Carte des objets stockés en object stream (PDF 1.5+) :
+    # `obj_num → {object_stream_num, index_in_stream}`. Peuplée par
+    # `parse_xref_stream` quand des entrées de type 2 sont rencontrées.
+    getter compressed_objects : Hash(Int32, Tuple(Int32, Int32))
 
     # Analyse la structure complète du PDF
     def parse! : Nil
@@ -49,16 +61,14 @@ module PDF
       xref_offset = find_xref_offset
 
       # Lire toutes les tables xref en suivant la chaîne /Prev
-      # Chaque section xref est suivie de son trailer
-      all_sections = [] of {Hash(Int32, Int64), Objects::Dictionary}
+      # Chaque section xref est suivie de son trailer (en mode
+      # classique) ; un xref stream contient les deux à la fois.
+      all_sections = [] of {Hash(Int32, Int64), Hash(Int32, Tuple(Int32, Int32)), Objects::Dictionary}
       current_offset = xref_offset
 
       loop do
-        entries = parse_xref(current_offset)
-        # @pos est maintenant juste après la table xref, devant "trailer"
-        skip_whitespace
-        trailer = parse_trailer
-        all_sections << {entries, trailer}
+        entries, compressed, trailer = parse_xref_or_stream(current_offset)
+        all_sections << {entries, compressed, trailer}
 
         # Suivre /Prev pour la section xref précédente
         if prev = trailer["Prev"]?
@@ -73,13 +83,36 @@ module PDF
       end
 
       # Le trailer principal est celui de la section la plus récente
-      @trailer = all_sections[0][1]
+      @trailer = all_sections[0][2]
 
       # Fusionner les tables xref (les plus anciennes d'abord, les plus récentes écrasent)
-      all_sections.reverse_each do |entries, _|
+      all_sections.reverse_each do |entries, compressed, _|
         entries.each do |obj_num, offset|
           @xref[obj_num] = offset
         end
+        compressed.each do |obj_num, ref|
+          @compressed_objects[obj_num] = ref
+        end
+      end
+    end
+
+    # Décide si l'offset pointe sur un xref classique (token "xref")
+    # ou sur un xref stream (objet indirect avec /Type /XRef). Renvoie
+    # `{xref_entries, compressed_entries, trailer}`.
+    private def parse_xref_or_stream(offset : Int64) : Tuple(Hash(Int32, Int64), Hash(Int32, Tuple(Int32, Int32)), Objects::Dictionary)
+      @pos = offset
+      skip_whitespace
+      token = peek_token
+      if token == "xref"
+        # Format classique
+        entries = parse_xref(offset)
+        skip_whitespace
+        trailer = parse_trailer
+        {entries, {} of Int32 => Tuple(Int32, Int32), trailer}
+      else
+        # Xref stream PDF 1.5+ : c'est un objet indirect "N M obj
+        # <<...>> stream ... endstream endobj"
+        parse_xref_stream(offset)
       end
     end
 
@@ -236,10 +269,14 @@ module PDF
         end
       end
 
-      # Décompresser si nécessaire
-      decoded_data = decompress_stream(dict, stream_data)
+      # Décompresser si possible. Si un filtre n'est pas supporté
+      # (CCITTFaxDecode, DCTDecode, JBIG2Decode, JPXDecode, …),
+      # on conserve les octets bruts ENCODÉS et on marque le stream
+      # comme non décodé pour que le merger / writer sache préserver
+      # `/Filter` et `/DecodeParms` à la ré-écriture.
+      decoded_data, was_decoded = decompress_stream(dict, stream_data)
 
-      Objects::Stream.new(dict, decoded_data)
+      Objects::Stream.new(dict, decoded_data, was_decoded)
     end
 
     # Analyse un tableau PDF [ ... ]
@@ -481,14 +518,7 @@ module PDF
     def parse_xref(offset : Int64) : Hash(Int32, Int64)
       @pos = offset
       result = {} of Int32 => Int64
-
-      # Vérifier si c'est une table xref traditionnelle ou un stream xref
-      token = read_token
-      if token != "xref"
-        # Peut être un stream de références croisées (PDF 1.5+)
-        STDERR.puts "AVERTISSEMENT : stream xref détecté (PDF 1.5+), non supporté en v1"
-        return result
-      end
+      expect_token("xref")
 
       # Lire les sous-sections
       loop do
@@ -523,6 +553,140 @@ module PDF
       end
 
       result
+    end
+
+    # Analyse un xref stream PDF 1.5+ (ISO 32000-1 § 7.5.8).
+    #
+    # Un xref stream est un objet indirect dont le dictionnaire
+    # contient les mêmes clés qu'un trailer (`/Root`, `/Info`,
+    # `/Size`, `/Prev`, `/ID`) plus :
+    # * `/Type /XRef`
+    # * `/W [w1 w2 w3]` — largeurs des champs des entrées (octets)
+    # * `/Index [first1 count1 first2 count2 …]` — sous-sections
+    #   d'objets représentées (par défaut `[0 Size]`)
+    #
+    # Le stream lui-même contient `Σ count` entrées de `w1+w2+w3`
+    # octets, encodées en gros-boutiste, généralement compressées
+    # par FlateDecode + Predictor PNG.
+    #
+    # Type d'entrée selon `field1` (largeur `w1`) :
+    # * 0 — objet libre (chaîne libre)
+    # * 1 — objet en usage (`field2`=offset, `field3`=génération)
+    # * 2 — objet en object stream (`field2`=numéro objstm,
+    #       `field3`=index dans l'objstm)
+    private def parse_xref_stream(offset : Int64) : Tuple(Hash(Int32, Int64), Hash(Int32, Tuple(Int32, Int32)), Objects::Dictionary)
+      indirect = parse_object_at(offset)
+      stream = indirect.value.as?(Objects::Stream)
+      raise "Xref stream attendu à l'offset #{offset}" unless stream
+      dict = stream.dictionary
+
+      # /W : largeurs des champs
+      w_arr = dict["W"]?.as?(Objects::Array)
+      raise "Xref stream sans /W" unless w_arr
+      w = w_arr.compact_map(&.as?(Objects::Number)).map { |n| n.to_i64.to_i32 }
+      raise "Xref stream /W invalide" if w.size != 3
+      w1, w2, w3 = w[0], w[1], w[2]
+      entry_size = w1 + w2 + w3
+
+      # /Index : sous-sections (par défaut [0, Size])
+      sections = [] of Tuple(Int32, Int32)
+      if idx_arr = dict["Index"]?.as?(Objects::Array)
+        nums = idx_arr.compact_map(&.as?(Objects::Number)).map { |n| n.to_i64.to_i32 }
+        (0...nums.size).step(2) do |i|
+          sections << {nums[i], nums[i + 1]}
+        end
+      else
+        size = dict["Size"]?.try(&.as?(Objects::Number)).try(&.to_i64).try(&.to_i32) || 0
+        sections << {0, size}
+      end
+
+      data = stream.data
+      entries = {} of Int32 => Int64
+      compressed = {} of Int32 => Tuple(Int32, Int32)
+      cursor = 0
+
+      sections.each do |first, count|
+        count.times do |i|
+          obj_num = first + i
+          field1 = w1 == 0 ? 1_i64 : read_be_int(data, cursor, w1)
+          field2 = w2 == 0 ? 0_i64 : read_be_int(data, cursor + w1, w2)
+          field3 = w3 == 0 ? 0_i64 : read_be_int(data, cursor + w1 + w2, w3)
+          cursor += entry_size
+
+          case field1
+          when 0_i64
+            # libre — ignore
+          when 1_i64
+            # en usage classique
+            entries[obj_num] = field2
+          when 2_i64
+            # objet compressé dans un object stream
+            compressed[obj_num] = {field2.to_i32, field3.to_i32}
+          end
+        end
+      end
+
+      # Le dictionnaire du xref stream sert aussi de trailer.
+      {entries, compressed, dict}
+    end
+
+    # Lit un entier gros-boutiste de `width` octets dans `data` à
+    # partir de `offset`. Largeur 0 = valeur par défaut (1 pour le
+    # type, 0 sinon — géré par l'appelant).
+    private def read_be_int(data : Bytes, offset : Int32, width : Int32) : Int64
+      result = 0_i64
+      width.times do |i|
+        result = (result << 8) | data[offset + i].to_i64
+      end
+      result
+    end
+
+    # Résout un objet stocké dans un object stream (PDF 1.5+,
+    # ISO 32000-1 § 7.5.7).
+    #
+    # Un object stream est un objet indirect avec `/Type /ObjStm`,
+    # `/N` (nb d'objets), `/First` (offset du premier objet dans les
+    # données décodées). Les premières `N×2` valeurs en tête sont des
+    # paires `obj_num offset_in_stream` ; suivent les valeurs des
+    # objets, en clair.
+    def resolve_compressed_object(obj_num : Int32) : Objects::Indirect?
+      ref = @compressed_objects[obj_num]?
+      return nil unless ref
+      objstm_num, index = ref
+
+      # Charger l'object stream s'il n'est pas déjà en cache
+      objstm_indirect = @objects[objstm_num]?
+      unless objstm_indirect
+        offset = @xref[objstm_num]?
+        return nil unless offset
+        objstm_indirect = parse_object_at(offset)
+        @objects[objstm_num] = objstm_indirect
+      end
+
+      stream = objstm_indirect.value.as?(Objects::Stream)
+      return nil unless stream
+      dict = stream.dictionary
+      n = dict["N"]?.try(&.as?(Objects::Number)).try(&.to_i64).try(&.to_i32) || 0
+      first = dict["First"]?.try(&.as?(Objects::Number)).try(&.to_i64).try(&.to_i32) || 0
+
+      # Parser les paires (obj_num, offset) en tête puis le N-ième objet
+      sub_parser = Parser.new(stream.data)
+      sub_parser.skip_whitespace
+
+      pairs = [] of Tuple(Int32, Int32)
+      n.times do
+        num = sub_parser.read_token.to_i32
+        sub_parser.skip_whitespace
+        off = sub_parser.read_token.to_i32
+        sub_parser.skip_whitespace
+        pairs << {num, off}
+      end
+
+      return nil if index < 0 || index >= pairs.size
+      target_num, target_offset = pairs[index]
+      sub_parser.seek((first + target_offset).to_i64)
+      value = sub_parser.parse_value
+      Objects::Indirect.new(target_num, 0, value)
     end
 
     # Analyse le dictionnaire trailer
@@ -665,37 +829,188 @@ module PDF
       end
     end
 
-    # Décompresse les données d'un stream selon ses filtres
-    private def decompress_stream(dict : Objects::Dictionary, data : Bytes) : Bytes
+    # Décompresse les données d'un stream selon ses filtres.
+    #
+    # Renvoie `{octets, decoded?}` :
+    # * `decoded? == true`  → tous les filtres ont été inversés ;
+    #   `octets` contient le contenu clair.
+    # * `decoded? == false` → un filtre au moins n'est pas supporté
+    #   (CCITTFaxDecode, DCTDecode, JBIG2Decode, JPXDecode…) ; on
+    #   préserve les octets ENCODÉS pour que le merger puisse les
+    #   recopier intacts dans le PDF de sortie en gardant `/Filter`.
+    private def decompress_stream(dict : Objects::Dictionary, data : Bytes) : Tuple(Bytes, Bool)
       filter = dict["Filter"]?
-      return data unless filter
+      return {data, true} unless filter
 
-      case filter
-      when Objects::Name
-        apply_filter(filter.value, data)
-      when Objects::Array
-        result = data
-        filter.each do |f|
-          if name = f.as?(Objects::Name)
-            result = apply_filter(name.value, result)
+      filter_names = case filter
+                     when Objects::Name
+                       [filter.value]
+                     when Objects::Array
+                       filter.compact_map(&.as?(Objects::Name)).map(&.value)
+                     else
+                       [] of String
+                     end
+
+      result = data
+      filter_names.each do |name|
+        decoded, ok = apply_filter(name, result, dict)
+        return {data, false} unless ok
+        result = decoded
+      end
+      {result, true}
+    end
+
+    # Applique un filtre. Renvoie `{octets, success?}`. `success? == false`
+    # signale un filtre non supporté ; le caller doit alors conserver les
+    # données brutes encodées et marquer le stream comme non décodé.
+    private def apply_filter(name : String, data : Bytes, dict : Objects::Dictionary) : Tuple(Bytes, Bool)
+      case name
+      when "FlateDecode", "Fl"
+        decoded = Filters::Flate.new.decode(data)
+        # Predictor PNG (utilisé surtout par les xref streams)
+        if parms = dict["DecodeParms"]?
+          if pdict = parms.as?(Objects::Dictionary)
+            predictor = pdict["Predictor"]?.try(&.as?(Objects::Number)).try(&.to_i64).try(&.to_i32) || 1
+            if predictor >= 10
+              columns = pdict["Columns"]?.try(&.as?(Objects::Number)).try(&.to_i64).try(&.to_i32) || 1
+              decoded = apply_png_predictor(decoded, columns)
+            end
           end
         end
-        result
+        {decoded, true}
+      when "ASCIIHexDecode", "AHx"
+        {ascii_hex_decode(data), true}
+      when "ASCII85Decode", "A85"
+        {ascii85_decode(data), true}
       else
-        data
+        # Filtres non supportés : DCTDecode (JPEG), CCITTFaxDecode,
+        # JBIG2Decode, JPXDecode, LZWDecode, RunLengthDecode, Crypt.
+        # Données conservées encodées ; le drapeau `decoded` du Stream
+        # passera à `false`.
+        {data, false}
       end
     end
 
-    # Applique un filtre de décompression
-    private def apply_filter(name : String, data : Bytes) : Bytes
-      case name
-      when "FlateDecode"
-        Filters::Flate.new.decode(data)
-      else
-        # Filtre non supporté, retourner les données brutes
-        STDERR.puts "AVERTISSEMENT : filtre '#{name}' non supporté"
-        data
+    # Inverse le filtre de prédiction PNG (utilisé avec FlateDecode
+    # par les xref streams et certaines images). Le PDF inclut un
+    # octet de "tag" en tête de chaque ligne indiquant l'algorithme :
+    #   0 = None, 1 = Sub, 2 = Up, 3 = Average, 4 = Paeth.
+    # Pour les xref streams le predictor le plus courant est `Up` (12).
+    private def apply_png_predictor(data : Bytes, columns : Int32) : Bytes
+      row_size = columns + 1 # +1 pour le tag d'algorithme
+      return data if row_size <= 1 || data.size % row_size != 0
+      rows = data.size // row_size
+      result = Bytes.new(rows * columns)
+      prev_row = Bytes.new(columns)
+
+      rows.times do |r|
+        tag = data[r * row_size]
+        line = data[r * row_size + 1, columns]
+        out_line = Bytes.new(columns)
+        case tag
+        when 0_u8 # None
+          line.copy_to(out_line)
+        when 1_u8 # Sub
+          columns.times do |c|
+            left = c >= 1 ? out_line[c - 1] : 0_u8
+            out_line[c] = (line[c] &+ left).to_u8
+          end
+        when 2_u8 # Up
+          columns.times do |c|
+            out_line[c] = (line[c] &+ prev_row[c]).to_u8
+          end
+        when 3_u8 # Average
+          columns.times do |c|
+            left = c >= 1 ? out_line[c - 1] : 0_u8
+            up = prev_row[c]
+            avg = ((left.to_i32 + up.to_i32) // 2).to_u8
+            out_line[c] = (line[c] &+ avg).to_u8
+          end
+        when 4_u8 # Paeth
+          columns.times do |c|
+            a = c >= 1 ? out_line[c - 1].to_i32 : 0
+            b = prev_row[c].to_i32
+            cc = c >= 1 ? prev_row[c - 1].to_i32 : 0
+            p = a + b - cc
+            pa = (p - a).abs
+            pb = (p - b).abs
+            pc = (p - cc).abs
+            paeth = if pa <= pb && pa <= pc
+                      a
+                    elsif pb <= pc
+                      b
+                    else
+                      cc
+                    end
+            out_line[c] = (line[c] &+ paeth.to_u8).to_u8
+          end
+        else
+          line.copy_to(out_line)
+        end
+        out_line.copy_to(result + r * columns)
+        prev_row = out_line
       end
+      result
+    end
+
+    # ASCIIHex : chaque paire de chiffres hexa = un octet. Termine
+    # à `>` (sentinelle PDF) ; ignore les blancs.
+    private def ascii_hex_decode(data : Bytes) : Bytes
+      result = IO::Memory.new
+      hex = String.build do |io|
+        data.each do |b|
+          break if b == '>'.ord.to_u8
+          next if WHITESPACE.includes?(b)
+          io << b.chr
+        end
+      end
+      hex += "0" if hex.size.odd?
+      (0...hex.size).step(2) do |i|
+        result.write_byte(hex[i, 2].to_u8(16))
+      end
+      result.to_slice
+    end
+
+    # ASCII85 : 5 caractères ASCII = 4 octets (base 85). `~>` termine.
+    private def ascii85_decode(data : Bytes) : Bytes
+      result = IO::Memory.new
+      buffer = [] of UInt32
+      i = 0
+      while i < data.size
+        b = data[i]
+        i += 1
+        break if b == '~'.ord.to_u8
+        next if WHITESPACE.includes?(b)
+        if b == 'z'.ord.to_u8 && buffer.empty?
+          4.times { result.write_byte(0_u8) }
+          next
+        end
+        next if b < '!'.ord.to_u8 || b > 'u'.ord.to_u8
+        buffer << (b - '!'.ord.to_u8).to_u32
+        if buffer.size == 5
+          v = 0_u32
+          buffer.each { |x| v = v * 85 + x }
+          result.write_byte(((v >> 24) & 0xff).to_u8)
+          result.write_byte(((v >> 16) & 0xff).to_u8)
+          result.write_byte(((v >> 8) & 0xff).to_u8)
+          result.write_byte((v & 0xff).to_u8)
+          buffer.clear
+        end
+      end
+      unless buffer.empty?
+        # Padding : le dernier groupe peut être partiel
+        partial = buffer.size
+        until buffer.size == 5
+          buffer << 84_u32 # max digit pour padding
+        end
+        v = 0_u32
+        buffer.each { |x| v = v * 85 + x }
+        bytes_to_write = partial - 1
+        result.write_byte(((v >> 24) & 0xff).to_u8) if bytes_to_write >= 1
+        result.write_byte(((v >> 16) & 0xff).to_u8) if bytes_to_write >= 2
+        result.write_byte(((v >> 8) & 0xff).to_u8) if bytes_to_write >= 3
+      end
+      result.to_slice
     end
   end
 end

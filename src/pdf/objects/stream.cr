@@ -25,6 +25,22 @@ module PDF
       # The raw stream data (before any encoding)
       property data : Bytes
 
+      # `true` quand `data` contient les octets décodés (le parser
+      # a su appliquer tous les filtres). `false` quand `data`
+      # contient les octets encodés tels qu'ils sont sur disque
+      # (un filtre n'a pas pu être inversé : CCITTFaxDecode,
+      # DCTDecode, JBIG2Decode, JPXDecode, etc.).
+      #
+      # Les copieurs (mergers) DOIVENT regarder ce drapeau :
+      # * `decoded == true`  → les octets seront ré-encodés à
+      #   l'écriture, donc supprimer `/Filter` `/DecodeParms`
+      #   `/Length` du dictionnaire pour qu'ils soient récrits.
+      # * `decoded == false` → les octets sont déjà encodés ; il
+      #   faut ABSOLUMENT préserver `/Filter` et `/DecodeParms`,
+      #   sinon le prochain parseur croira lire du texte clair et
+      #   échouera. `/Length` est récrit dans tous les cas.
+      property decoded : Bool
+
       # The encoded stream data (after filters applied)
       # This is lazily computed and cached
       @encoded_data : Bytes?
@@ -37,9 +53,10 @@ module PDF
         @data = Bytes.empty
         @filters = ::Array(Filters::Base).new
         @encoded_data = nil
+        @decoded = true
       end
 
-      def initialize(@dictionary : Dictionary, @data : Bytes = Bytes.empty)
+      def initialize(@dictionary : Dictionary, @data : Bytes = Bytes.empty, @decoded : Bool = true)
         @filters = ::Array(Filters::Base).new
         @encoded_data = nil
       end

@@ -7,6 +7,63 @@ All notable changes to crystal-pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v0.3.6 — 2026-04-27
+
+**Extended PDF compatibility: 1.5+ and undecoded streams.** Lifts
+the blocker that prevented `Reader` from reading modern PDFs
+produced by LilyPond, Microsoft Word, or any engine emitting xref
+streams or CCITT/DCT images.
+
+=== Added
+
+* **`Parser#parse_xref_stream`** (PDF 1.5+, ISO 32000-1 § 7.5.8) —
+  replaces the classic xref table with a stream object
+  `/Type /XRef`. Format: `/W [w1 w2 w3]` (field widths in bytes),
+  `/Index` (sub-sections), entries in big-endian. Three entry
+  types supported:
+  ** Type 0 (free object)
+  ** Type 1 (in-use, `field2`=offset)
+  ** Type 2 (compressed, `field2`=objstm number,
+     `field3`=index in stream)
+* **`Parser#resolve_compressed_object`** (PDF 1.5+, ISO 32000-1
+  § 7.5.7) — reads an object stored in an object stream
+  (`/Type /ObjStm`). Header `/N` + `/First` + pairs
+  `obj_num offset_in_stream` + plain-text object values.
+* **`Reader#resolve_reference`** automatically consults
+  `Parser#compressed_objects` when an object number has no direct
+  xref offset → PDF 1.5+ objects become transparent to callers.
+* **`Parser`: PNG Predictor** (None/Sub/Up/Average/Paeth) applied
+  after FlateDecode when `/DecodeParms /Predictor >= 10`.
+  Required for xref streams.
+* **`Parser`: ASCIIHexDecode and ASCII85Decode** are now fully
+  decoded.
+* **`Stream#decoded`** (`Bool`, default `true`) — flag indicating
+  whether `data` contains decoded bytes (filters inverted) or raw
+  encoded bytes (unsupported filter).
+
+=== Changed
+
+* **`Parser#decompress_stream`** now returns `Tuple(Bytes, Bool)`:
+  if any filter is not invertible (CCITTFaxDecode, DCTDecode,
+  JBIG2Decode, JPXDecode, LZWDecode, RunLengthDecode, Crypt), the
+  parser keeps the ENCODED bytes and marks the `Stream` as not
+  decoded. Copiers (mergers) MUST honour this flag: preserve
+  `/Filter` and `/DecodeParms` at re-writing time when
+  `decoded == false`.
+
+=== Removed
+
+* The noisy warning
+  `"AVERTISSEMENT : stream xref détecté (PDF 1.5+), non supporté en v1"`
+  that fired on every modern PDF. No more use: everything is read
+  silently.
+
+=== Tested
+
+* 776 specs green (unchanged). Manual validation on a 16-PDF
+  corpus (PDF 1.3 to 1.7, CCITTFaxDecode scans, DCTDecode JPEGs,
+  LilyPond, MS Word, Finale, Sibelius): all read correctly.
+
 == v0.3.5 — 2026-04-26
 
 === Added

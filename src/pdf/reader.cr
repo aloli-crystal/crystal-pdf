@@ -96,6 +96,10 @@ module PDF
         indirect = @parser.parse_object_at(offset)
         @objects[ref.object_number] = indirect
         indirect.value
+      elsif compressed = @parser.resolve_compressed_object(ref.object_number)
+        # Objet stocké dans un object stream (PDF 1.5+).
+        @objects[ref.object_number] = compressed
+        compressed.value
       else
         Objects::Null.instance
       end

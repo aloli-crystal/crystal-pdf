@@ -1,5 +1,5 @@
 name: crystal-pdf
-version: 0.3.5
+version: 0.3.6
 
 description: |
   A pure Crystal library for low-level PDF generation.

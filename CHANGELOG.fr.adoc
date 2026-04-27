@@ -7,6 +7,64 @@ Toutes les évolutions notables de crystal-pdf sont consignées ici. Le
 format suit https://keepachangelog.com/fr/1.1.0/[Keep a Changelog] et
 le versionnage respecte https://semver.org/lang/fr/[SemVer].
 
+== v0.3.6 — 2026-04-27
+
+**Compatibilité PDF étendue : 1.5+ et streams non décodables.**
+Lève le bloquant qui interdisait à `Reader` de lire les PDF
+modernes générés par LilyPond, Microsoft Word, ou n'importe quel
+moteur produisant des xref streams ou des images CCITT/DCT.
+
+=== Ajouts
+
+* **`Parser#parse_xref_stream`** (PDF 1.5+, ISO 32000-1 § 7.5.8) —
+  remplace la table xref classique par un objet stream
+  `/Type /XRef`. Format : `/W [w1 w2 w3]` (largeurs de champs en
+  octets), `/Index` (sous-sections), entrées en gros-boutiste.
+  Trois types d'entrées pris en charge :
+  ** Type 0 (objet libre)
+  ** Type 1 (objet en usage classique, `field2`=offset)
+  ** Type 2 (objet compressé, `field2`=numéro objstm,
+     `field3`=index dans le stream)
+* **`Parser#resolve_compressed_object`** (PDF 1.5+, ISO 32000-1
+  § 7.5.7) — lit un objet stocké dans un object stream
+  (`/Type /ObjStm`). Header `/N` + `/First` + paires
+  `obj_num offset_in_stream` + valeurs des objets en clair.
+* **`Reader#resolve_reference`** consulte automatiquement
+  `Parser#compressed_objects` quand un numéro d'objet n'a pas
+  d'offset xref direct → les objets PDF 1.5+ deviennent
+  transparents pour le caller.
+* **`Parser` : Predictor PNG** (algorithmes None/Sub/Up/Average/Paeth)
+  appliqué après FlateDecode quand `/DecodeParms /Predictor >= 10`.
+  Indispensable pour les xref streams.
+* **`Parser` : ASCIIHexDecode et ASCII85Decode** sont désormais
+  pleinement décodés.
+* **`Stream#decoded`** (`Bool`, par défaut `true`) — drapeau qui
+  indique si `data` contient les octets décodés (filtres inversés)
+  ou les octets bruts encodés (filtre non supporté).
+
+=== Modifications
+
+* **`Parser#decompress_stream`** signe désormais `Tuple(Bytes, Bool)` :
+  si un filtre n'est pas inversible (CCITTFaxDecode, DCTDecode,
+  JBIG2Decode, JPXDecode, LZWDecode, RunLengthDecode, Crypt), le
+  parser conserve les octets ENCODÉS et marque le `Stream` comme
+  non décodé. Les copieurs (mergers) DOIVENT respecter ce drapeau :
+  préserver `/Filter` `/DecodeParms` à la ré-écriture quand
+  `decoded == false`.
+
+=== Suppressions
+
+* L'avertissement bruyant
+  `"AVERTISSEMENT : stream xref détecté (PDF 1.5+), non supporté en v1"`
+  qui s'affichait à chaque PDF moderne. Plus d'usage : tout est lu
+  silencieusement.
+
+=== Tests
+
+* 776 specs verts (inchangés). Validation manuelle sur un corpus
+  de 16 PDF (PDF 1.3 à 1.7, scans CCITTFaxDecode, JPEG DCTDecode,
+  LilyPond, MS Word, Finale, Sibelius) : tous lus correctement.
+
 == v0.3.5 — 2026-04-26
 
 === Ajouts
