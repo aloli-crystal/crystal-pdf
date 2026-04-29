@@ -3,18 +3,32 @@
 :toc-title: Versions
 :toclevels: 2
 
-Toutes les évolutions notables de crystal-pdf sont consignées ici. Le
+Toutes les évolutions notables de pdf sont consignées ici. Le
 format suit https://keepachangelog.com/fr/1.1.0/[Keep a Changelog] et
 le versionnage respecte https://semver.org/lang/fr/[SemVer].
+
+== v0.3.8 — 2026-04-29
+
+=== Documentation
+
+* **Description clarifiée** : ce shard est une *inspiration / fork*,
+  pas un portage strict. Le code Crystal est un fork de
+  watzon/pdf.cr (lui-même inspiré de Prawn), avec des ajouts
+  significatifs par-dessus. Le versioning est indépendant —
+  les 3 chiffres SemVer marquent une création / fork selon la
+  convention Aloli, et ne suivent **pas** les cycles de version
+  de Prawn ni de watzon/pdf.cr.
+* `shard.yml` description et `README.adoc` adaptés.
+  Aucun changement de code.
 
 == v0.3.7 — 2026-04-29
 
 === Modifié
 
-* **Repo GitHub renommé** `aloli-crystal/crystal-pdf` → `aloli-crystal/pdf`
+* **Repo GitHub renommé** `aloli-crystal/pdf` → `aloli-crystal/pdf`
   (convention de nommage Aloli : les créations originales abandonnent
   le préfixe `crystal-`). Les anciens liens redirigent automatiquement.
-* Champ `name:` du `shard.yml` mis à jour de `crystal-pdf` à `pdf`.
+* Champ `name:` du `shard.yml` mis à jour de `pdf` à `pdf`.
 
 == v0.3.6 — 2026-04-27
 

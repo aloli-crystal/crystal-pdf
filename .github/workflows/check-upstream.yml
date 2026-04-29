@@ -114,7 +114,7 @@ jobs:
           ### Actions
 
           - Review the [Prawn changelog](https://github.com/prawnpdf/prawn/blob/master/CHANGELOG.md)
-          - Check for new features to port to crystal-pdf
+          - Check for new features to port to pdf
           - Update \`UPSTREAM_VERSION\` in \`src/pdf.cr\`
           EOF
           )

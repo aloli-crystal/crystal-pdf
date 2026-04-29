@@ -34,7 +34,7 @@ doc.page(width: 595.28, height: 841.89) do |page|
   page.text("Hello, World!", at: {72, 750})
 
   page.font("Helvetica", size: 12)
-  page.text("Generated with crystal-pdf", at: {72, 720})
+  page.text("Generated with pdf", at: {72, 720})
 
   page.stroke_color(0.0, 0.0, 0.0)
   page.line_width(1.0)

@@ -1,9 +1,9 @@
-= Programme de Développement : crystal-pdf
+= Programme de Développement : pdf
 :toc:
 :toc-placement!:
 :icons: font
 
-Ce document présente un programme de développement pour les prochaines améliorations du shard `crystal-pdf`.
+Ce document présente un programme de développement pour les prochaines améliorations du shard `pdf`.
 Les fonctionnalités sont organisées en trois sprints logiques, priorisés en fonction de leur impact, de leur complexité et de leurs dépendances techniques.
 
 toc::[]

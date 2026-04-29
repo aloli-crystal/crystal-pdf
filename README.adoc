@@ -3,14 +3,20 @@
 :toc-placement!:
 :source-highlighter: rouge
 
-A pure Crystal library for PDF generation with AsciiDoc-to-PDF conversion.
-Combines a low-level PDF engine (ported from https://github.com/watzon/pdf.cr[watzon/pdf.cr]) with a high-level AsciiDoc converter (ported from https://github.com/asciidoctor/asciidoctor-pdf[asciidoctor-pdf]).
+A pure Crystal library for low-level PDF generation.
+
+NOTE: This shard is a Crystal *fork inspired by* https://github.com/watzon/pdf.cr[watzon/pdf.cr]
+(which is itself inspired by Ruby's https://github.com/prawnpdf/prawn[Prawn]).
+It is *not* a strict port of either — its versioning is independent (3-digit
+SemVer) and does **not** track Prawn or watzon/pdf.cr release cycles. Per the
+Aloli convention, original creations and forks use 3-digit versions, while
+strict Ruby-gem ports use 4-digit versions calé sur the upstream gem.
 
 toc::[]
 
 == Features
 
-=== PDF Engine (ported from Prawn)
+=== PDF Engine (inspired by Prawn / watzon/pdf.cr)
 
 The PDF engine provides low-level PDF generation capabilities:
 
@@ -92,7 +98,7 @@ doc.page(width: 595.28, height: 841.89) do |page|
   page.text("Hello, World!", at: {72, 750})
 
   page.font("Helvetica", size: 12)
-  page.text("Generated with crystal-pdf", at: {72, 720})
+  page.text("Generated with pdf", at: {72, 720})
 
   page.stroke_color(0.0, 0.0, 0.0)
   page.line_width(1.0)

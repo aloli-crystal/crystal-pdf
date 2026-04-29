@@ -9,8 +9,8 @@
 [source,yaml]
 ----
 dependencies:
-  crystal-pdf:
-    github: aloli/crystal-pdf
+  pdf:
+    github: aloli/pdf
 ----
 
 Puis lancez :

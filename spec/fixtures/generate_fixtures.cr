@@ -3,7 +3,7 @@
 # Usage: crystal run spec/fixtures/generate_fixtures.cr
 #
 # Génère des fichiers PDF de test dans spec/fixtures/ en utilisant
-# le générateur crystal-pdf existant.
+# le générateur pdf existant.
 
 require "../../src/pdf"
 

@@ -1,11 +1,14 @@
 name: pdf
-version: 0.3.7
+version: 0.3.8
 
 description: |
   A pure Crystal library for low-level PDF generation.
-  Ported from the Prawn Ruby gem (watzon/pdf.cr) with additional
-  contributions: formatted text layout, bounding boxes, column layout,
-  table rendering, and SVG rendering.
+  Crystal fork inspired by watzon/pdf.cr (itself inspired by the
+  Ruby gem Prawn) — NOT a strict port of any upstream. Versioning
+  is independent (3-digit SemVer) and does not track Prawn or
+  watzon/pdf.cr release cycles.
+  Adds formatted text layout, bounding boxes, column layout, table
+  rendering, and SVG rendering on top of the original engine.
 
 authors:
   - Chris Watson <cawatson1993@gmail.com>
