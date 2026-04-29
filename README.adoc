@@ -1,4 +1,4 @@
-= crystal-pdf
+= pdf
 :toc:
 :toc-placement!:
 :source-highlighter: rouge
@@ -45,8 +45,8 @@ Add the dependency to your `shard.yml`:
 [source,yaml]
 ----
 dependencies:
-  crystal-pdf:
-    github: aloli/crystal-pdf
+  pdf:
+    github: aloli-crystal/pdf
 ----
 
 Then run:

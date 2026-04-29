@@ -7,6 +7,15 @@ Toutes les évolutions notables de crystal-pdf sont consignées ici. Le
 format suit https://keepachangelog.com/fr/1.1.0/[Keep a Changelog] et
 le versionnage respecte https://semver.org/lang/fr/[SemVer].
 
+== v0.3.7 — 2026-04-29
+
+=== Modifié
+
+* **Repo GitHub renommé** `aloli-crystal/crystal-pdf` → `aloli-crystal/pdf`
+  (convention de nommage Aloli : les créations originales abandonnent
+  le préfixe `crystal-`). Les anciens liens redirigent automatiquement.
+* Champ `name:` du `shard.yml` mis à jour de `crystal-pdf` à `pdf`.
+
 == v0.3.6 — 2026-04-27
 
 **Compatibilité PDF étendue : 1.5+ et streams non décodables.**
