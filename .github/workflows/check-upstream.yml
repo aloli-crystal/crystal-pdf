@@ -68,10 +68,12 @@ jobs:
           EOF
           )
 
-          gh issue create \
-            --title "New commits in watzon/pdf.cr ($(date +%Y-%m-%d))" \
-            --body "$body" \
-            --label "upstream"
+          # API REST plutôt que GraphQL (`gh issue create`) qui renvoie
+          # `Resource not accessible by integration` sur GITHUB_TOKEN.
+          gh api "repos/${GITHUB_REPOSITORY}/issues" \
+            -f title="New commits in watzon/pdf.cr ($(date +%Y-%m-%d))" \
+            -f body="$body" \
+            -f "labels[]=upstream"
 
   check-prawn:
     runs-on: ubuntu-latest
@@ -119,7 +121,9 @@ jobs:
           EOF
           )
 
-          gh issue create \
-            --title "New Prawn version: ${LATEST} (was ${KNOWN_VERSION})" \
-            --body "$body" \
-            --label "upstream-prawn"
+          # API REST plutôt que GraphQL (`gh issue create`) qui renvoie
+          # `Resource not accessible by integration` sur GITHUB_TOKEN.
+          gh api "repos/${GITHUB_REPOSITORY}/issues" \
+            -f title="New Prawn version: ${LATEST} (was ${KNOWN_VERSION})" \
+            -f body="$body" \
+            -f "labels[]=upstream-prawn"
