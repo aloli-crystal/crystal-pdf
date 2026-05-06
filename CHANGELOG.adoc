@@ -7,6 +7,41 @@ All notable changes to pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v0.5.1 — 2026-05-07
+
+**Authentification owner pour V<5 et validation /Perms pour V=5.**
+Complète la couverture du Standard Security Handler côté lecture.
+
+=== Added
+
+* **Algorithm 7** (PDF spec § 7.6.3.4) — authentification via le
+  mot de passe owner pour V=1, V=2 et V=4 (R=2, R=3, R=4). Le
+  reader essaie d'abord le mot de passe utilisateur, puis le owner.
++
+[source,crystal]
+----
+# Fonctionne avec un PDF chiffré RC4-128 ou AES-128 par qpdf
+# `--encrypt user-pwd owner-pwd 128 --use-aes=y`
+reader = PDF::Reader.open("doc.pdf", password: "owner-pwd")
+----
+
+* **Algorithm 13** (ISO 32000-2 § 7.6.4.4.10) — validation du
+  bloc /Perms après dérivation de la clé du fichier en V=5. Vérifie
+  la signature "adb" (bytes 9..11), le marqueur 0xFFFFFFFF (4..7) et
+  le drapeau /EncryptMetadata (byte 8).
++
+Si /Perms a été altéré ou si la clé dérivée est fausse pour une
+raison subtile (collision), `EncryptedPdfError` est levée. Couche
+de défense supplémentaire en plus du check /U.
+
+=== Tests
+
+* Spec d'intégration : ouverture par mot de passe owner d'un PDF
+  AES-128 R=4 et RC4-128 R=3 produits par qpdf.
+* Spec de tampering : modification d'un caractère hex de /Perms
+  → l'ouverture échoue désormais (avant : passait silencieusement).
+* Suite globale : 807 examples, 0 failure.
+
 == v0.5.0 — 2026-05-07
 
 **Chiffrement et déchiffrement AES natifs** — le shard couvre

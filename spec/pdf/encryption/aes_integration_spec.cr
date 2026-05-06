@@ -107,6 +107,69 @@ describe "PDF::Encryption (AES)" do
     end
   end
 
+  it "ouvre un PDF AES-128 avec mot de passe owner (Algorithm 7)" do
+    plain = File.tempname("plain", ".pdf")
+    encrypted = File.tempname("aes128-owner", ".pdf")
+
+    begin
+      pdf = PDF::Document.new
+      pdf.page do |page|
+        page.font("Helvetica", size: 12)
+        page.text("AES-128 owner test", at: {72, 720})
+      end
+      pdf.save(plain)
+
+      unless Process.find_executable("qpdf")
+        pending! "qpdf non installé"
+      end
+      io = IO::Memory.new
+      status = Process.run(
+        "qpdf",
+        ["--encrypt", "user-pwd", "owner-pwd", "128", "--use-aes=y", "--", plain, encrypted],
+        output: io, error: io,
+      )
+      pending! "qpdf KO (#{io}) — test sautée" unless status.success?
+
+      # Ouvrir avec le mot de passe owner doit fonctionner via Algorithm 7.
+      reader = PDF::Reader.open(encrypted, password: "owner-pwd")
+      reader.page_count.should eq(1)
+    ensure
+      File.delete(plain) if File.exists?(plain)
+      File.delete(encrypted) if File.exists?(encrypted)
+    end
+  end
+
+  it "ouvre un PDF RC4-128 avec mot de passe owner (Algorithm 7, R=3)" do
+    plain = File.tempname("plain", ".pdf")
+    encrypted = File.tempname("rc4-owner", ".pdf")
+
+    begin
+      pdf = PDF::Document.new
+      pdf.page do |page|
+        page.font("Helvetica", size: 12)
+        page.text("RC4 owner test", at: {72, 720})
+      end
+      pdf.save(plain)
+
+      unless Process.find_executable("qpdf")
+        pending! "qpdf non installé"
+      end
+      io = IO::Memory.new
+      status = Process.run(
+        "qpdf",
+        ["--allow-weak-crypto", "--encrypt", "user-pwd", "owner-pwd", "128", "--", plain, encrypted],
+        output: io, error: io,
+      )
+      pending! "qpdf KO (#{io}) — test sautée" unless status.success?
+
+      reader = PDF::Reader.open(encrypted, password: "owner-pwd")
+      reader.page_count.should eq(1)
+    ensure
+      File.delete(plain) if File.exists?(plain)
+      File.delete(encrypted) if File.exists?(encrypted)
+    end
+  end
+
   it "lève EncryptedPdfError sur mauvais mot de passe AES-256" do
     plain = File.tempname("plain", ".pdf")
     encrypted = File.tempname("aes256-wrong", ".pdf")

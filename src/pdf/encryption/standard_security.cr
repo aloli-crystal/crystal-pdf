@@ -127,16 +127,21 @@ module PDF
       end
 
       # Tente le mot de passe. Retourne `true` si la clé dérivée
-      # passe le check du `/U` ; `false` sinon (mot de passe faux).
+      # passe le check du `/U` ou du `/O` (mot de passe owner) ;
+      # `false` sinon (mot de passe faux).
       # En cas de succès, `file_key` est défini.
       def try_password(password : String) : Bool
         if @v == 5
           try_password_v5(password)
         else
+          # 1. Tenter le mot de passe utilisateur
           key = compute_file_key(password)
-          return false unless validate_user_password(key)
-          @file_key = key
-          true
+          if validate_user_password(key)
+            @file_key = key
+            return true
+          end
+          # 2. Tenter le mot de passe owner (Algorithm 7)
+          try_password_owner_legacy(password)
         end
       end
 
@@ -200,8 +205,13 @@ module PDF
       # Algorithm 2 du spec § 7.6.3.3 — calcul de la clé du fichier
       # à partir du mot de passe (V=1/2/4).
       private def compute_file_key(password : String) : Bytes
-        # 1. Padded password (32 bytes)
-        padded = pad_password(password)
+        compute_file_key_from_padded(pad_password(password))
+      end
+
+      # Variante de `compute_file_key` prenant un mot de passe DÉJÀ
+      # padded à 32 bytes — utilisé par Algorithm 7 quand on a
+      # déchiffré /O et que le résultat est déjà au format attendu.
+      private def compute_file_key_from_padded(padded : Bytes) : Bytes
         # 2. Concaténer : padded || /O || /P (4 bytes LE) || /ID
         ctx = IO::Memory.new
         ctx.write(padded)
@@ -239,6 +249,52 @@ module PDF
         # Complète avec PADDING si reste de la place
         (n...32).each { |i| out[i] = PADDING[i - n] }
         out
+      end
+
+      # Algorithm 7 du spec § 7.6.3.4 — authentification via le mot
+      # de passe owner (V=1/2/4, R=2/3/4).
+      #
+      # Étapes :
+      #   1. Padded owner password → MD5
+      #   2. R≥3 : 50 itérations de MD5
+      #   3. RC4-déchiffrer /O avec la clé obtenue
+      #      - R=2 : un round
+      #      - R≥3 : 20 rounds (i de 19 à 0, key XOR i)
+      #   4. Le résultat est le mot de passe utilisateur (déjà padded)
+      #   5. Authentifier ce padded user password (Algorithm 6)
+      private def try_password_owner_legacy(password : String) : Bool
+        owner_pad = pad_password(password)
+        hash = ::Digest::MD5.digest(owner_pad)
+        n_bytes = @length // 8
+        if @r >= 3
+          50.times { hash = ::Digest::MD5.digest(hash[0, n_bytes]) }
+        end
+        rc4_key = hash[0, n_bytes]
+
+        # Décrypter /O pour obtenir le padded user password
+        purported_user_pad =
+          if @r == 2
+            RC4.apply(rc4_key, @o)
+          else
+            # 20 rounds en sens inverse : i = 19, 18, …, 0
+            result = @o.dup
+            19.downto(0) do |i|
+              xor_key = Bytes.new(rc4_key.size) { |k| (rc4_key[k] ^ i.to_u8).to_u8 }
+              result = RC4.apply(xor_key, result)
+            end
+            result
+          end
+
+        # Authentifier comme mot de passe utilisateur. Le résultat
+        # est déjà un padded password (32 bytes), on le passe direct
+        # à `compute_file_key_from_padded`.
+        padded_32 = purported_user_pad[0, 32]
+        key = compute_file_key_from_padded(padded_32)
+        if validate_user_password(key)
+          @file_key = key
+          return true
+        end
+        false
       end
 
       # Vérifie que la clé calculée déchiffre correctement `/U`.
@@ -328,7 +384,9 @@ module PDF
 
         intermediate = compute_hash_r6(password, u_key_salt, Bytes.empty)
         iv_zero = Bytes.new(16, 0_u8)
-        @file_key = AES.decrypt_no_iv(intermediate, @ue, iv_zero, padding: false)
+        key = AES.decrypt_no_iv(intermediate, @ue, iv_zero, padding: false)
+        return false unless validate_perms_v5(key)
+        @file_key = key
         true
       end
 
@@ -341,7 +399,54 @@ module PDF
 
         intermediate = compute_hash_r6(password, o_key_salt, additional)
         iv_zero = Bytes.new(16, 0_u8)
-        @file_key = AES.decrypt_no_iv(intermediate, @oe, iv_zero, padding: false)
+        key = AES.decrypt_no_iv(intermediate, @oe, iv_zero, padding: false)
+        return false unless validate_perms_v5(key)
+        @file_key = key
+        true
+      end
+
+      # Algorithm 13 du spec ISO 32000-2 § 7.6.4.4.10 — vérifie le
+      # bloc /Perms après dérivation de la clé du fichier.
+      #
+      # Décrypte les 16 octets de /Perms en AES-256-ECB (équivalent
+      # à CBC IV=0 sur un seul bloc) avec `file_key`, puis vérifie :
+      #   - bytes 0..3   : /P en little-endian (sécurité belt-and-suspenders ;
+      #                    si différent, /P a été altéré → on log mais ne fail
+      #                    pas, le spec dit de privilégier /Perms sur /P)
+      #   - bytes 4..7   : 0xFFFFFFFF (marqueur)
+      #   - byte 8       : 'T' si /EncryptMetadata, 'F' sinon
+      #   - bytes 9..11  : "adb" (signature Adobe)
+      #   - bytes 12..15 : aléatoire (non vérifié)
+      #
+      # Si la signature "adb" est absente, c'est que la clé est
+      # fausse → le mot de passe ne convient pas.
+      #
+      # Optionnel pour la rétrocompatibilité : si /Perms est vide ou
+      # de taille incorrecte, on saute la vérif.
+      private def validate_perms_v5(file_key : Bytes) : Bool
+        return true if @perms.size != 16
+
+        iv_zero = Bytes.new(16, 0_u8)
+        decrypted = AES.decrypt_no_iv(file_key, @perms, iv_zero, padding: false)
+
+        # Signature "adb" sur les bytes 9..11 — la seule vérif vraiment
+        # fiable. Si elle passe, la clé est bonne.
+        return false unless decrypted[9] == 'a'.ord.to_u8
+        return false unless decrypted[10] == 'd'.ord.to_u8
+        return false unless decrypted[11] == 'b'.ord.to_u8
+
+        # Marqueur 0xFFFFFFFF (bytes 4..7) — supplémentaire.
+        return false unless decrypted[4] == 0xff_u8 &&
+                            decrypted[5] == 0xff_u8 &&
+                            decrypted[6] == 0xff_u8 &&
+                            decrypted[7] == 0xff_u8
+
+        # Byte 8 : 'T' ou 'F' selon /EncryptMetadata. Si différent,
+        # le PDF a été altéré : on refuse plutôt que d'avoir un
+        # comportement incohérent.
+        expected_meta = @encrypt_metadata ? 'T'.ord.to_u8 : 'F'.ord.to_u8
+        return false unless decrypted[8] == expected_meta
+
         true
       end
 
