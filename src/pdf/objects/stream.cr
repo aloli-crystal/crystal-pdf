@@ -85,6 +85,31 @@ module PDF
         @encoded_data ||= encode_data
       end
 
+      # Force the cached encoded data and clear filters. Utilisé par
+      # le writer après chiffrement : les octets ont déjà subi
+      # Filter+Crypt, on ne veut pas que `to_pdf` les ré-encode.
+      #
+      # Avant de neutraliser les filtres, on **persiste** leurs noms
+      # dans le dict (`/Filter`), pour que le LECTEUR sache encore
+      # qu'il faut Flate-décoder APRÈS déchiffrement. Sans cette
+      # étape, `update_filter_entry` (court-circuité quand
+      # `@filters.empty?`) laisserait `/Filter` absent et le reader
+      # rendrait les octets Flate sans les décompresser.
+      def replace_encoded!(bytes : Bytes) : Nil
+        unless @filters.empty?
+          if @filters.size == 1
+            @dictionary[Name::FILTER] = @filters.first.name
+          else
+            arr = Array.new
+            @filters.each { |f| arr << f.name }
+            @dictionary[Name::FILTER] = arr
+          end
+        end
+        @data = bytes
+        @encoded_data = bytes
+        @filters = ::Array(Filters::Base).new
+      end
+
       # Set a dictionary entry
       def []=(key : Name, value : Base) : Base
         @dictionary[key] = value

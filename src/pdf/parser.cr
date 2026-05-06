@@ -155,7 +155,44 @@ module PDF
           read_token
         end
       end
+
+      # Déchiffrer récursivement les strings dans le sous-arbre.
+      # Les streams sont déjà déchiffrés dans `parse_stream`, mais
+      # les strings (ex. /Title du /Info, /Producer, etc.) sont
+      # parsées ici en clair tant qu'on ne déchiffre pas. On le fait
+      # APRÈS coup en marchant le sous-arbre.
+      if (sh = @security_handler) && !value.is_a?(Objects::Stream)
+        decrypt_strings_in_place(value, obj_num, gen_num, sh)
+      end
+
       Objects::Indirect.new(obj_num, gen_num, value)
+    end
+
+    # Marche récursivement la valeur et déchiffre toutes les
+    # `Objects::Str` rencontrées (sauf celles internes à un /Encrypt
+    # ou un /XRef stream — pas vraiment de risque ici car on travaille
+    # uniquement sur le sous-arbre d'un objet indirect non-stream).
+    private def decrypt_strings_in_place(
+      obj : Objects::Base,
+      obj_num : Int32,
+      gen : Int32,
+      sh : Encryption::StandardSecurity,
+    ) : Nil
+      case obj
+      when Objects::Str
+        # Déchiffre en place : remplace `value` par le plaintext.
+        decrypted = sh.decrypt_object(obj.value.to_slice, obj_num, gen)
+        obj.value = String.new(decrypted)
+      when Objects::Dictionary
+        obj.values.each do |v|
+          decrypt_strings_in_place(v, obj_num, gen, sh)
+        end
+      when Objects::Array
+        obj.each do |v|
+          decrypt_strings_in_place(v, obj_num, gen, sh)
+        end
+      end
+      # Number, Name, Boolean, Null, Reference : rien à faire.
     end
 
     # Analyse une valeur PDF quelconque à la position courante

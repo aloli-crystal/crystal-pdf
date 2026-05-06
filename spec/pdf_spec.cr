@@ -2,7 +2,7 @@ require "./spec_helper"
 
 describe PDF do
   it "has a version number" do
-    PDF::VERSION.should eq("0.1.0")
+    PDF::VERSION.should eq("0.5.0")
   end
 
   it "has a PDF version" do

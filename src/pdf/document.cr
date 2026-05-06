@@ -1,3 +1,5 @@
+require "random/secure"
+
 module PDF
   # Represents a PDF document.
   #
@@ -67,7 +69,20 @@ module PDF
     @outline : Outline?
 
     # Encryption settings (nil = no encryption)
+    # Conservé pour rétrocompatibilité — `pdf.encrypt(...)` initialise
+    # AUSSI `@security_handler` (le moteur réel de chiffrement) ; les
+    # deux pointent sur les mêmes paramètres.
     @encryption : Security::Encryption?
+
+    # Handler de chiffrement (Standard Security Handler) — fournit
+    # /Encrypt + chiffrement par-objet RC4 / AES-128 / AES-256.
+    # Mis en place par `Document#encrypt(...)` et consommé par le
+    # `DocumentWriter`.
+    property security_handler : Encryption::StandardSecurity?
+
+    # Premier élément de /ID — file identifier permanent. Généré au
+    # premier accès si non fixé (Random::Secure 16 octets).
+    @file_id : Bytes?
 
     # Stamps (Form XObjects) — name => indirect object reference
     @stamps : Hash(String, Objects::Indirect)
@@ -214,32 +229,115 @@ module PDF
       @outline ||= Outline.new(self)
     end
 
-    # Encrypts the document with password protection and permission control.
+    # Chiffre le document avec un mot de passe et un niveau de
+    # protection (RC4 128-bit, AES-128 ou AES-256).
     #
     # ```
     # pdf.encrypt(
     #   user_password: "",
     #   owner_password: "secret",
-    #   permissions: [PDF::Security::Permission::Print]
+    #   permissions: [PDF::Security::Permission::Print],
+    #   level: :aes_256, # défaut — PDF 2.0 / Acrobat ≥ X
     # )
     # ```
+    #
+    # Niveaux disponibles (cf. `Encryption::StandardSecurity::Level`) :
+    # * `:rc4_128` — RC4 128-bit (V=2, R=3). Compatible Acrobat ≥ 5
+    #   mais cryptographiquement faible. À éviter sauf legacy.
+    # * `:aes_128` — AES-128-CBC (V=4, R=4 + CryptFilter AESV2).
+    #   Compatible Acrobat ≥ 7. Bon compromis.
+    # * `:aes_256` — AES-256-CBC (V=5, R=6, PDF 2.0). Compatible
+    #   Acrobat ≥ X. À privilégier pour les nouveaux documents.
     def encrypt(
       user_password : String = "",
       owner_password : String = "",
       permissions : Array(Security::Permission) = [Security::Permission::Print],
-      key_length : Int32 = 40,
+      level : Symbol = :aes_256,
+      encrypt_metadata : Bool = true,
     ) : Nil
+      lvl = case level
+            when :rc4_128 then Encryption::StandardSecurity::Level::RC4_128
+            when :aes_128 then Encryption::StandardSecurity::Level::AES_128
+            when :aes_256 then Encryption::StandardSecurity::Level::AES_256
+            else
+              raise ArgumentError.new("Niveau de chiffrement inconnu : #{level.inspect} (attendu :rc4_128, :aes_128 ou :aes_256)")
+            end
+
+      perms_value = compute_permissions_value(permissions)
+      @security_handler = Encryption::StandardSecurity.build_for_encryption(
+        user_password: user_password,
+        owner_password: owner_password.empty? ? user_password : owner_password,
+        level: lvl,
+        permissions: perms_value,
+        id: file_id,
+        encrypt_metadata: encrypt_metadata,
+      )
+      # Conservé pour rétrocompatibilité (les anciens specs vérifient
+      # que `@encryption` est défini après un appel à `encrypt`).
       @encryption = Security::Encryption.new(
         user_password: user_password,
         owner_password: owner_password,
         permissions: permissions,
-        key_length: key_length
+        key_length: lvl.rc4_128? ? 128 : 128, # purement informatif
+      )
+    end
+
+    # Surcharge legacy : conserve `key_length:` pour ne pas casser
+    # le code existant. Mappe vers `level:` automatiquement.
+    def encrypt(
+      *,
+      user_password : String = "",
+      owner_password : String = "",
+      permissions : Array(Security::Permission) = [Security::Permission::Print],
+      key_length : Int32,
+    ) : Nil
+      level = case key_length
+              when 40, 128 then :rc4_128
+              else
+                raise ArgumentError.new("key_length doit être 40 ou 128 ; pour AES, utilisez `level: :aes_128` ou `:aes_256`.")
+              end
+      encrypt(
+        user_password: user_password,
+        owner_password: owner_password,
+        permissions: permissions,
+        level: level,
       )
     end
 
     # Returns the encryption settings, or nil if not encrypted.
     def encryption : Security::Encryption?
       @encryption
+    end
+
+    # Renvoie le premier élément du /ID du document, en générant
+    # 16 octets aléatoires au premier accès. C'est ce qui est
+    # injecté dans la dérivation de la clé du fichier (V=1/2/4) et
+    # écrit comme premier élément du tableau /ID dans le trailer.
+    def file_id : Bytes
+      @file_id ||= Random::Secure.random_bytes(16)
+    end
+
+    # Permet d'imposer un /ID explicite (utile pour reproduire un
+    # document à l'octet près, ou pour des tests déterministes).
+    def file_id=(id : Bytes) : Bytes
+      @file_id = id
+    end
+
+    # `true` si un /ID a déjà été matérialisé (utilisé par le writer
+    # pour décider d'écrire le tableau /ID dans le trailer même sans
+    # chiffrement).
+    def has_file_id? : Bool
+      !@file_id.nil?
+    end
+
+    # Calcule la valeur entière du champ /P (permissions) selon le
+    # spec § 7.6.3.2.
+    private def compute_permissions_value(permissions : Array(Security::Permission)) : Int32
+      value = -1_i32
+      value &= ~0b00111100 # bits 3..6 à 0
+      permissions.each { |p| value |= p.value }
+      value &= ~0b11 # bits 1..2 à 0
+      value
     end
 
     # Creates a reusable stamp (Form XObject).

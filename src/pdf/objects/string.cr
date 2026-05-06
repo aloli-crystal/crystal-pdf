@@ -24,8 +24,8 @@ module PDF
       # UTF-16BE Byte Order Mark
       BOM = "\xFE\xFF"
 
-      getter value : ::String
-      getter? hex : Bool
+      property value : ::String
+      property? hex : Bool
 
       def initialize(@value : ::String, @hex : Bool = false)
       end

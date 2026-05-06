@@ -102,27 +102,63 @@ module PDF
         raise EncryptedPdfError.new("Filter de sécurité '#{filter}' non supporté (uniquement /Standard)")
       end
 
-      # V=1 / V=2 = RC4 ; V=4 = AES-128/RC4 selon CryptFilter ; V=5 = AES-256
-      unless [1, 2].includes?(v)
+      # V=1, 2, 4, 5 supportés. R=5 (transitoire) explicitement refusé.
+      unless [1, 2, 4, 5].includes?(v)
         raise EncryptedPdfError.new(
-          "Algorithme V=#{v}, R=#{r} non supporté pour l'instant (uniquement RC4 V=1/V=2). " \
+          "Algorithme V=#{v}, R=#{r} non supporté. " \
           "Contournement : passer le PDF par `gs` ou `qpdf --decrypt`."
         )
       end
+      if r == 5
+        raise EncryptedPdfError.new(
+          "PDF chiffré R=5 (transitoire ISO 32000-2 draft, déprécié) non supporté. " \
+          "Contournement : `qpdf --decrypt` puis `qpdf --encrypt ... 256` (R=6)."
+        )
+      end
+
+      # Déterminer le cipher effectif
+      cipher = detect_cipher(dict, v)
 
       # Extraire /O, /U, /P et l'/ID
       o = bytes_from_string(dict["O"]?)
       u = bytes_from_string(dict["U"]?)
       p_value = dict["P"]?.try(&.as?(Objects::Number)).try(&.to_i64).try(&.to_i32) || 0
       id_first = first_id_bytes
-      raise EncryptedPdfError.new("/Encrypt incomplet (O, U ou ID manquant)") if o.empty? || u.empty? || id_first.empty?
+      # /ID est optionnel en V=5 (le file_key ne dépend que des sels
+      # /U et /O), mais obligatoire en V=1/2/4.
+      if v < 5 && (o.empty? || u.empty? || id_first.empty?)
+        raise EncryptedPdfError.new("/Encrypt incomplet (O, U ou ID manquant)")
+      end
+      if v == 5 && (o.empty? || u.empty?)
+        raise EncryptedPdfError.new("/Encrypt incomplet (O ou U manquant)")
+      end
+
+      # /OE, /UE, /Perms et /EncryptMetadata pour V=5
+      oe = bytes_from_string(dict["OE"]?)
+      ue = bytes_from_string(dict["UE"]?)
+      perms = bytes_from_string(dict["Perms"]?)
+      encrypt_metadata = dict["EncryptMetadata"]?.try(&.as?(Objects::Boolean)).try(&.value)
+      encrypt_metadata = true if encrypt_metadata.nil?
+
+      # Pour V=5, /Length n'est pas significatif côté StandardSecurity
+      # (forcé à 256). Pour V=4, /Length du dict global n'est pas
+      # toujours présent, on prend celui du CryptFilter ou 128 par défaut.
+      effective_length = case v
+                         when 4 then 128
+                         when 5 then 256
+                         else        length
+                         end
 
       ssh = Encryption::StandardSecurity.new(
-        o: o, u: u, p: p_value, id: id_first, v: v, r: r, length: length,
+        o: o, u: u, p: p_value, id: id_first,
+        v: v, r: r, length: effective_length,
+        cipher: cipher,
+        oe: oe, ue: ue, perms: perms,
+        encrypt_metadata: encrypt_metadata,
       )
 
       unless ssh.try_password(password)
-        algo = v == 1 ? "RC4 40-bit" : "RC4 #{length}-bit"
+        algo = describe_cipher(cipher, effective_length)
         raise EncryptedPdfError.new(
           "PDF chiffré (#{algo}, R=#{r}). Mot de passe utilisateur " \
           "invalide#{password.empty? ? " (vide essayé)" : ""}. " \
@@ -139,6 +175,40 @@ module PDF
       # vidant le cache du parser et le notre.
       @parser.objects.clear
       @objects.clear
+    end
+
+    # Détermine le cipher effectif en lisant /CF/StdCF/CFM pour V=4.
+    # V=1/V=2 → RC4 ; V=5 → AES-256 ; V=4 → AES-128 si CFM=AESV2,
+    # sinon RC4 (CFM=V2).
+    private def detect_cipher(dict : Objects::Dictionary, v : Int32) : Encryption::StandardSecurity::Cipher
+      case v
+      when 1, 2 then Encryption::StandardSecurity::Cipher::RC4
+      when 5    then Encryption::StandardSecurity::Cipher::AES_256
+      when 4
+        cf = dict["CF"]?.try(&.as?(Objects::Dictionary))
+        return Encryption::StandardSecurity::Cipher::RC4 unless cf
+        # Le filtre par défaut pour les streams est nommé via /StmF
+        stmf = dict["StmF"]?.try(&.as?(Objects::Name)).try(&.value) || "StdCF"
+        std_cf = cf[stmf]?.try(&.as?(Objects::Dictionary))
+        return Encryption::StandardSecurity::Cipher::RC4 unless std_cf
+        cfm = std_cf["CFM"]?.try(&.as?(Objects::Name)).try(&.value)
+        case cfm
+        when "AESV2" then Encryption::StandardSecurity::Cipher::AES_128
+        when "V2"    then Encryption::StandardSecurity::Cipher::RC4
+        else
+          raise EncryptedPdfError.new("CryptFilter CFM=#{cfm} non supporté")
+        end
+      else
+        raise EncryptedPdfError.new("V=#{v} non supporté pour la détection de cipher")
+      end
+    end
+
+    private def describe_cipher(cipher : Encryption::StandardSecurity::Cipher, length : Int32) : String
+      case cipher
+      in .rc4?     then "RC4 #{length}-bit"
+      in .aes_128? then "AES-128"
+      in .aes_256? then "AES-256"
+      end
     end
 
     # Résout le dict `/Encrypt` (référence indirecte la plupart du
