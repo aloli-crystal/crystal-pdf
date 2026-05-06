@@ -35,6 +35,18 @@ module PDF
     # Position courante dans le flux d'octets
     @pos : Int64
 
+    # Handler de chiffrement à appliquer sur les streams et les
+    # strings indirectes (nil pour PDFs non chiffrés). Configuré
+    # par `Reader.initialize` après détection du `/Encrypt` dans
+    # le trailer et validation du mot de passe.
+    property security_handler : Encryption::StandardSecurity? = nil
+
+    # Numéro d'objet courant en cours d'analyse — utilisé par
+    # `parse_stream` pour calculer la clé par-objet quand le
+    # `security_handler` est actif.
+    @current_obj_num : Int32 = 0
+    @current_gen : Int32 = 0
+
     # Repositionne le curseur de lecture (utilisé par les
     # sous-parsers d'object streams).
     def seek(offset : Int64) : Nil
@@ -125,7 +137,16 @@ module PDF
       skip_whitespace
       expect_token("obj")
       skip_whitespace
-      value = parse_value
+      # Mémoriser le couple (obj_num, gen) pour que `parse_stream`
+      # puisse calculer la clé par-objet quand un `security_handler`
+      # est configuré.
+      saved_obj, saved_gen = @current_obj_num, @current_gen
+      @current_obj_num, @current_gen = obj_num, gen_num
+      begin
+        value = parse_value
+      ensure
+        @current_obj_num, @current_gen = saved_obj, saved_gen
+      end
       skip_whitespace
       # endobj peut être absent si c'est un stream (déjà lu dans parse_value)
       if @pos < @data.size
@@ -267,6 +288,18 @@ module PDF
         if token == "endstream"
           read_token
         end
+      end
+
+      # Déchiffrer si un Security Handler est configuré. Le
+      # déchiffrement intervient AVANT la décompression : le PDF
+      # spec applique d'abord les filtres /Filter (Flate, etc.)
+      # puis le « Crypt » au-dessus, donc à la lecture on inverse :
+      # déchiffrement → décompression.
+      if sh = @security_handler
+        # Pas de déchiffrement pour le stream du Metadata si
+        # /EncryptMetadata est false (PDF 1.5+) — non géré dans
+        # cette première version, on déchiffre tout.
+        stream_data = sh.decrypt_object(stream_data, @current_obj_num, @current_gen)
       end
 
       # Décompresser si possible. Si un filtre n'est pas supporté

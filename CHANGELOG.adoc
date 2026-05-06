@@ -7,6 +7,76 @@ All notable changes to pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v0.4.0 — 2026-05-01
+
+**Déchiffrement natif des PDFs chiffrés RC4** — le shard sait
+désormais ouvrir et lire les PDFs protégés par le « Standard
+Security Handler » V=1/V=2 (RC4 40 à 128 bits, R=2 et R=3),
+sans dépendance externe.
+
+=== Added
+
+* **`PDF::Encryption::RC4`** — implémentation pure Crystal du
+  chiffrement de flux RC4 (Rivest Cipher 4), couvrant le KSA et
+  le PRGA. ~50 lignes, validée contre les vecteurs de test du
+  RFC 6229 et de Wikipedia (`Key`/`Plaintext`,
+  `Wiki`/`pedia`, `Secret`/`Attack at dawn`).
++
+[source,crystal]
+----
+cipher = PDF::Encryption::RC4.new(key)
+encrypted = cipher.apply(plaintext)
+# RC4 est symétrique : apply(apply(data)) == data
+----
+
+* **`PDF::Encryption::StandardSecurity`** — Standard Security
+  Handler conforme à ISO 32000-1 § 7.6.3 :
++
+--
+** Algorithm 2 — dérivation de la clé du fichier à partir du
+   mot de passe utilisateur, du `/O`, du `/P` et du `/ID`.
+   Cascade MD5 sur 50 itérations pour R≥3.
+** Algorithm 4 (R=2) / Algorithm 5 (R=3) — validation du mot
+   de passe contre le `/U`.
+** Algorithm 1 — dérivation de la clé par-objet (MD5 du
+   `file_key || obj_num_LE3 || gen_LE2`, tronquée à `n+5`).
+--
+
+* **`PDF::Reader.open(path, password = "")`** — accepte un
+  paramètre `password` optionnel. Si le PDF n'est pas chiffré,
+  le paramètre est ignoré ; sinon il est essayé contre le `/U`.
+  Mot de passe vide par défaut (couvre le cas « owner-only »
+  ultra-courant des PDFs Office / Acrobat avec restrictions de
+  copie ou d'édition).
+
+=== Changed
+
+* **`PDF::EncryptedPdfError`** n'est plus levée dès qu'un PDF
+  contient `/Encrypt`. Elle l'est uniquement quand :
++
+--
+** L'algorithme n'est pas supporté (V=4 avec CryptFilter
+   AESV2, V=5 AES-256). Le message indique le contournement :
+   `crystal-combine-pdf gs FICHIER.pdf -i --backup`.
+** Le mot de passe utilisateur est invalide.
+** Le dictionnaire `/Encrypt` est mal formé.
+--
+
+* `Parser` injecte maintenant la clé par-objet sur les flux
+  ET les chaînes (objets indirects) au moment du parsing.
+  Les flux sont déchiffrés AVANT décompression Flate, comme
+  le veut le spec.
+
+=== Roadmap
+
+* **AES-128 R=4** (V=4 avec CryptFilter `Standard CFM=AESV2`) :
+  utilisé par les exports Office récents et Acrobat ≥ 9. Effort
+  estimé S (1-2 jours) — toute la mécanique de clé est déjà en
+  place, il « suffit » de brancher AES-CBC à la place de RC4.
+* **AES-256 R=5/R=6** (V=5) : exigé par PDF 2.0. Effort estimé
+  M — la dérivation de clé change (SHA-256 + Unicode SASLprep),
+  pas seulement le cipher.
+
 == v0.3.9 — 2026-05-06
 
 === Added

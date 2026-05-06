@@ -35,19 +35,22 @@ module PDF
     # Prochain numéro d'objet disponible pour les nouveaux objets
     @next_object_number : Int32
 
-    # Ouvre un PDF depuis un chemin de fichier
-    def self.open(path : String) : Reader
+    # Ouvre un PDF depuis un chemin de fichier. `password` est
+    # le mot de passe utilisateur si le PDF est chiffré (vide par
+    # défaut, ce qui suffit pour la majorité des PDFs « owner-only
+    # protected »).
+    def self.open(path : String, password : String = "") : Reader
       data = File.read(path).to_slice
-      new(data)
+      new(data, password)
     end
 
-    # Ouvre un PDF depuis un flux IO
-    def self.open(io : IO) : Reader
+    # Ouvre un PDF depuis un flux IO.
+    def self.open(io : IO, password : String = "") : Reader
       data = io.gets_to_end.to_slice
-      new(data)
+      new(data, password)
     end
 
-    def initialize(@data : Bytes)
+    def initialize(@data : Bytes, password : String = "")
       @parser = Parser.new(@data)
       @parser.parse!
 
@@ -58,18 +61,17 @@ module PDF
       @pages = [] of ReaderPage
       @next_object_number = 1
 
-      # Détecter les PDFs chiffrés AVANT de tenter de lire les
-      # streams. Sinon on tombe plus tard sur un cryptique
-      # `Compress::Zlib::Error: Invalid header` quand le décompresseur
-      # essaie de Flate-décoder des octets encore chiffrés.
+      # Détecter les PDFs chiffrés et tenter le déchiffrement.
+      # Stratégie : essayer le `password` fourni (vide par défaut),
+      # qui marche pour la plupart des PDFs « owner-only protected »
+      # (cas le plus courant : restrictions de copie/édition mais
+      # ouverture libre).
       #
-      # `/Encrypt` peut figurer dans le trailer (PDF classique) OU
-      # dans le dictionnaire xref-stream (PDF 1.5+). On ne supporte
-      # PAS encore le déchiffrement (RC4 / AES) — on lève une erreur
-      # claire pour que le caller puisse renvoyer l'utilisateur vers
-      # un contournement (gs / qpdf --decrypt / etc.).
+      # Si le mot de passe est faux OU si l'algorithme n'est pas
+      # encore supporté (V=4/V=5/AES), on lève `EncryptedPdfError`
+      # pour que le caller puisse rediriger vers un contournement.
       if encrypt_obj = @trailer["Encrypt"]?
-        raise EncryptedPdfError.new(describe_encryption(encrypt_obj))
+        setup_decryption(encrypt_obj, password)
       end
 
       # Calculer le prochain numéro d'objet disponible
@@ -83,33 +85,88 @@ module PDF
       build_page_tree
     end
 
-    # Renvoie une description courte du chiffrement utilisé (algo,
-    # révision, taille de clé). Best-effort : si le dict ne se résout
-    # pas proprement, on retourne juste « PDF chiffré ».
-    private def describe_encryption(encrypt_obj : Objects::Base) : String
-      dict =
-        if (ref = encrypt_obj.as?(Objects::Reference)) && (off = @xref[ref.object_number]?)
-          @parser.parse_object_at(off).value.as?(Objects::Dictionary)
-        else
-          encrypt_obj.as?(Objects::Dictionary)
-        end
-      return "PDF chiffré (déchiffrement non supporté)" unless dict
+    # Configure le `security_handler` du parser après avoir validé
+    # le mot de passe. Lève `EncryptedPdfError` si le mot de passe
+    # ne convient pas ou si l'algorithme n'est pas supporté.
+    private def setup_decryption(encrypt_obj : Objects::Base, password : String) : Nil
+      dict = resolve_encrypt_dict(encrypt_obj)
+      raise EncryptedPdfError.new("Dictionnaire /Encrypt introuvable ou mal formé") unless dict
 
       filter = dict["Filter"]?.try(&.as?(Objects::Name)).try(&.value) || "?"
       v = dict["V"]?.try(&.as?(Objects::Number)).try(&.to_i64).try(&.to_i32) || 0
       r = dict["R"]?.try(&.as?(Objects::Number)).try(&.to_i64).try(&.to_i32) || 0
-      length = dict["Length"]?.try(&.as?(Objects::Number)).try(&.to_i64).try(&.to_i32) || 0
+      length = dict["Length"]?.try(&.as?(Objects::Number)).try(&.to_i64).try(&.to_i32) || 40
 
-      algo =
-        case v
-        when 1 then "RC4 40-bit"
-        when 2 then "RC4 #{length}-bit"
-        when 4 then "AES-128 (CFM-driven)"
-        when 5 then "AES-256"
-        else        "V=#{v}"
-        end
+      # Filter doit être /Standard pour le Standard Security Handler
+      unless filter == "Standard"
+        raise EncryptedPdfError.new("Filter de sécurité '#{filter}' non supporté (uniquement /Standard)")
+      end
 
-      "PDF chiffré : Filter=#{filter}, algorithme=#{algo}, R=#{r}. Le déchiffrement n'est pas encore supporté par ce shard."
+      # V=1 / V=2 = RC4 ; V=4 = AES-128/RC4 selon CryptFilter ; V=5 = AES-256
+      unless [1, 2].includes?(v)
+        raise EncryptedPdfError.new(
+          "Algorithme V=#{v}, R=#{r} non supporté pour l'instant (uniquement RC4 V=1/V=2). " \
+          "Contournement : passer le PDF par `gs` ou `qpdf --decrypt`."
+        )
+      end
+
+      # Extraire /O, /U, /P et l'/ID
+      o = bytes_from_string(dict["O"]?)
+      u = bytes_from_string(dict["U"]?)
+      p_value = dict["P"]?.try(&.as?(Objects::Number)).try(&.to_i64).try(&.to_i32) || 0
+      id_first = first_id_bytes
+      raise EncryptedPdfError.new("/Encrypt incomplet (O, U ou ID manquant)") if o.empty? || u.empty? || id_first.empty?
+
+      ssh = Encryption::StandardSecurity.new(
+        o: o, u: u, p: p_value, id: id_first, v: v, r: r, length: length,
+      )
+
+      unless ssh.try_password(password)
+        algo = v == 1 ? "RC4 40-bit" : "RC4 #{length}-bit"
+        raise EncryptedPdfError.new(
+          "PDF chiffré (#{algo}, R=#{r}). Mot de passe utilisateur " \
+          "invalide#{password.empty? ? " (vide essayé)" : ""}. " \
+          "Fournissez le mot de passe via `Reader.open(path, password: \"...\")`."
+        )
+      end
+
+      @parser.security_handler = ssh
+
+      # IMPORTANT : invalider les caches d'objets déjà lus.
+      # `parse!` a peut-être résolu certains objets (xref stream,
+      # /Info) sans déchiffrement parce que le handler n'était pas
+      # encore configuré. On force une re-résolution propre en
+      # vidant le cache du parser et le notre.
+      @parser.objects.clear
+      @objects.clear
+    end
+
+    # Résout le dict `/Encrypt` (référence indirecte la plupart du
+    # temps, dict en ligne possible). Retourne nil si introuvable.
+    private def resolve_encrypt_dict(encrypt_obj : Objects::Base) : Objects::Dictionary?
+      if (ref = encrypt_obj.as?(Objects::Reference)) && (off = @xref[ref.object_number]?)
+        @parser.parse_object_at(off).value.as?(Objects::Dictionary)
+      else
+        encrypt_obj.as?(Objects::Dictionary)
+      end
+    end
+
+    # Extrait les bytes d'un Objects::Str (forme littérale ou hex —
+    # les deux sont stockées dans Str avec un drapeau `hex?`).
+    private def bytes_from_string(obj : Objects::Base?) : Bytes
+      case obj
+      when Objects::Str then obj.value.to_slice
+      else                   Bytes.empty
+      end
+    end
+
+    # Récupère le premier élément de `/ID` du trailer, sous forme
+    # de Bytes. Indispensable au calcul de la clé du fichier.
+    private def first_id_bytes : Bytes
+      arr = @trailer["ID"]?.try(&.as?(Objects::Array))
+      return Bytes.empty unless arr
+      first = arr[0]?
+      bytes_from_string(first)
     end
 
     # Nombre de pages dans le document

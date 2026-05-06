@@ -15,7 +15,7 @@
 # pdf.save("output.pdf")
 # ```
 module PDF
-  VERSION = "0.1.0"
+  VERSION = "0.4.0"
 
   # PDF version to generate (1.7 = ISO 32000-1:2008)
   PDF_VERSION = "1.7"
@@ -89,6 +89,10 @@ require "./pdf/metadata/xmp"
 require "./pdf/annotations"
 require "./pdf/destinations"
 require "./pdf/outline"
+
+# Chiffrement (Standard Security Handler — RC4 pour l'instant)
+require "./pdf/encryption/rc4"
+require "./pdf/encryption/standard_security"
 
 # PDF reader (analyseur et lecteur)
 require "./pdf/parser"
