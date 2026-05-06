@@ -58,6 +58,20 @@ module PDF
       @pages = [] of ReaderPage
       @next_object_number = 1
 
+      # Détecter les PDFs chiffrés AVANT de tenter de lire les
+      # streams. Sinon on tombe plus tard sur un cryptique
+      # `Compress::Zlib::Error: Invalid header` quand le décompresseur
+      # essaie de Flate-décoder des octets encore chiffrés.
+      #
+      # `/Encrypt` peut figurer dans le trailer (PDF classique) OU
+      # dans le dictionnaire xref-stream (PDF 1.5+). On ne supporte
+      # PAS encore le déchiffrement (RC4 / AES) — on lève une erreur
+      # claire pour que le caller puisse renvoyer l'utilisateur vers
+      # un contournement (gs / qpdf --decrypt / etc.).
+      if encrypt_obj = @trailer["Encrypt"]?
+        raise EncryptedPdfError.new(describe_encryption(encrypt_obj))
+      end
+
       # Calculer le prochain numéro d'objet disponible
       if size_obj = @trailer["Size"]?
         if num = size_obj.as?(Objects::Number)
@@ -67,6 +81,35 @@ module PDF
 
       # Construire l'arbre des pages
       build_page_tree
+    end
+
+    # Renvoie une description courte du chiffrement utilisé (algo,
+    # révision, taille de clé). Best-effort : si le dict ne se résout
+    # pas proprement, on retourne juste « PDF chiffré ».
+    private def describe_encryption(encrypt_obj : Objects::Base) : String
+      dict =
+        if (ref = encrypt_obj.as?(Objects::Reference)) && (off = @xref[ref.object_number]?)
+          @parser.parse_object_at(off).value.as?(Objects::Dictionary)
+        else
+          encrypt_obj.as?(Objects::Dictionary)
+        end
+      return "PDF chiffré (déchiffrement non supporté)" unless dict
+
+      filter = dict["Filter"]?.try(&.as?(Objects::Name)).try(&.value) || "?"
+      v = dict["V"]?.try(&.as?(Objects::Number)).try(&.to_i64).try(&.to_i32) || 0
+      r = dict["R"]?.try(&.as?(Objects::Number)).try(&.to_i64).try(&.to_i32) || 0
+      length = dict["Length"]?.try(&.as?(Objects::Number)).try(&.to_i64).try(&.to_i32) || 0
+
+      algo =
+        case v
+        when 1 then "RC4 40-bit"
+        when 2 then "RC4 #{length}-bit"
+        when 4 then "AES-128 (CFM-driven)"
+        when 5 then "AES-256"
+        else        "V=#{v}"
+        end
+
+      "PDF chiffré : Filter=#{filter}, algorithme=#{algo}, R=#{r}. Le déchiffrement n'est pas encore supporté par ce shard."
     end
 
     # Nombre de pages dans le document
@@ -274,5 +317,22 @@ module PDF
         page.page_dict["Contents"] = new_ref
       end
     end
+  end
+
+  # Levée par `Reader.open` quand le PDF est chiffré (RC4 ou AES).
+  # Les flux ne peuvent pas être lus tant qu'ils ne sont pas déchiffrés ;
+  # tenter de Flate-décoder des octets chiffrés produit un cryptique
+  # `Compress::Zlib::Error: Invalid header`.
+  #
+  # Cas typique : « owner-only protection » — mot de passe utilisateur
+  # vide, mais permissions restreintes. Tout viewer ouvre le fichier
+  # sans demander, ce qui crée la fausse impression que le PDF n'est
+  # pas chiffré (`pdfinfo` peut afficher `Encrypted: no` alors que le
+  # trailer contient bien `/Encrypt`).
+  #
+  # Contournement utilisateur : passer le PDF par `ghostscript` ou
+  # `qpdf --decrypt` pour produire une copie non chiffrée que ce
+  # shard saura lire.
+  class EncryptedPdfError < Exception
   end
 end

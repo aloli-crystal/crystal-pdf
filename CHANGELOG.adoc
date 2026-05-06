@@ -7,6 +7,53 @@ All notable changes to pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v0.3.9 — 2026-05-06
+
+=== Added
+
+* **`PDF::EncryptedPdfError`** — exception dédiée levée par
+  `Reader.open` quand le trailer contient `/Encrypt`. Les PDFs
+  chiffrés (RC4 ou AES) ne sont pas lisibles tant que les flux
+  ne sont pas déchiffrés ; tenter de Flate-décoder des octets
+  chiffrés produit un cryptique `Compress::Zlib::Error: Invalid
+  header` qui n'aide pas l'utilisateur à comprendre le problème.
++
+Le message inclut désormais l'algorithme détecté
+(p. ex. `RC4 128-bit, R=3` ou `AES-256`) pour faciliter le
+diagnostic. La levée intervient à `Reader.open`, AVANT toute
+tentative de lecture de stream.
++
+[source,crystal]
+----
+begin
+  reader = PDF::Reader.open("encrypted.pdf")
+rescue ex : PDF::EncryptedPdfError
+  STDERR.puts ex.message
+  # PDF chiffré : Filter=Standard, algorithme=RC4 128-bit, R=3.
+  # Le déchiffrement n'est pas encore supporté par ce shard.
+end
+----
++
+*Cas typique* : « owner-only protection » — les PDFs Office /
+Acrobat avec restrictions de copie ou d'édition mais sans mot
+de passe utilisateur. `pdfinfo` affiche souvent `Encrypted: no`
+sur ces fichiers (parce qu'aucun mot de passe n'est demandé),
+mais le trailer contient bien `/Encrypt` et les flux sont
+chiffrés. Le bug se manifestait alors comme un `Invalid header`
+sans contexte de fichier.
++
+*Contournement utilisateur* (en attendant le déchiffrement
+natif) : passer le PDF par `ghostscript` ou `qpdf --decrypt`.
+Le shard `crystal-combine-pdf` v1.0.31.25+ propose
+`crystal-combine-pdf gs FICHIER.pdf -i` qui fait ça en une
+commande.
+
+=== Roadmap
+
+Le déchiffrement RC4 / AES natif est prévu en v0.4 (cf.
+`prod-crystal/crystal-combine-pdf/ROADMAP.adoc` § « Lecture de
+PDFs chiffrés »).
+
 == v0.3.8 — 2026-04-29
 
 === Documentation

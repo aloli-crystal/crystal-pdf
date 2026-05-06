@@ -1,5 +1,5 @@
 name: pdf
-version: 0.3.8
+version: 0.3.9
 
 description: |
   A pure Crystal library for low-level PDF generation.
