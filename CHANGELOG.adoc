@@ -7,6 +7,23 @@ All notable changes to pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v0.5.4 — 2026-05-07
+
+=== Fixed
+
+* **`PDF::VERSION` était hardcodée**, à mettre à jour manuellement à
+  chaque release — sujet aux oublis. Désormais lue au compile-time
+  directement depuis `shard.yml` via le macro Crystal `read_file`.
+  Plus de désynchro possible entre la source de vérité (shard.yml)
+  et la constante embarquée dans le binaire.
++
+Pattern reproduit identiquement dans `aloli-crystal/crystal-combine-pdf`
+v1.0.31.34 et `aloli-crystal/pdf-signature` v0.1.1. À généraliser à
+tous les shards aloli-crystal/*.
+
+* Spec adapté : compare désormais `PDF::VERSION` au `version:` parsé
+  du `shard.yml` à l'exécution (au lieu d'un littéral hardcodé).
+
 == v0.5.3 — 2026-05-07
 
 === Fixed

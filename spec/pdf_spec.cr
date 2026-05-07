@@ -1,8 +1,14 @@
 require "./spec_helper"
+require "yaml"
 
 describe PDF do
-  it "has a version number" do
-    PDF::VERSION.should eq("0.5.3")
+  it "VERSION matches shard.yml (compile-time read, pas de désynchro possible)" do
+    yml = YAML.parse(File.read(File.join(__DIR__, "..", "shard.yml")))
+    PDF::VERSION.should eq(yml["version"].as_s)
+  end
+
+  it "VERSION est au format SemVer X.Y.Z" do
+    PDF::VERSION.should match(/^\d+\.\d+\.\d+$/)
   end
 
   it "has a PDF version" do
