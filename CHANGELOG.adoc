@@ -7,6 +7,25 @@ All notable changes to pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v0.5.2 — 2026-05-07
+
+=== Fixed
+
+* **Le parser tentait de déchiffrer les chaînes du dict `/Encrypt`
+  lui-même** lors d'un re-parsing forcé (pattern utilisé par
+  `crystal-combine-pdf` quand il matérialise tous les objets
+  d'un PDF chiffré pour la fusion). Spec § 7.6.2 : les strings
+  du `/Encrypt` (`/O`, `/U`, `/OE`, `/UE`, `/Perms`) **ne sont
+  jamais chiffrées** — leurs bytes ont leur propre sémantique
+  (hash MD5/SHA-256, blob AES-256 chiffré avec une clé dérivée
+  différemment). En tentant de les AES-déchiffrer avec la
+  `file_key` + `obj_num`, on cassait OpenSSL avec un
+  `bad decrypt` paddings PKCS#7.
++
+Le parser mémorise désormais l'`encrypt_object_number` (l'objet
+indirect qui porte le `/Encrypt`) et saute le déchiffrement
+récursif pour ce seul objet.
+
 == v0.5.1 — 2026-05-07
 
 **Authentification owner pour V<5 et validation /Perms pour V=5.**

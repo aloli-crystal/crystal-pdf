@@ -41,6 +41,13 @@ module PDF
     # le trailer et validation du mot de passe.
     property security_handler : Encryption::StandardSecurity? = nil
 
+    # Numéro d'objet indirect du dict `/Encrypt` (s'il existe en
+    # tant qu'objet indirect plutôt que dict en ligne dans le
+    # trailer). Spec § 7.6.2 : les strings du dict /Encrypt
+    # ne sont JAMAIS chiffrées, donc le parser doit les laisser
+    # tranquilles même quand `security_handler` est actif.
+    property encrypt_object_number : Int32? = nil
+
     # Numéro d'objet courant en cours d'analyse — utilisé par
     # `parse_stream` pour calculer la clé par-objet quand le
     # `security_handler` est actif.
@@ -161,7 +168,14 @@ module PDF
       # les strings (ex. /Title du /Info, /Producer, etc.) sont
       # parsées ici en clair tant qu'on ne déchiffre pas. On le fait
       # APRÈS coup en marchant le sous-arbre.
-      if (sh = @security_handler) && !value.is_a?(Objects::Stream)
+      #
+      # Exception spec § 7.6.2 : le dict `/Encrypt` lui-même contient
+      # des strings (/O, /U, /OE, /UE, /Perms) qui ne SONT PAS chiffrées —
+      # leurs bytes ont leur propre sémantique (hash, blob AES indépendant).
+      # On saute donc le déchiffrement quand on parse l'objet /Encrypt.
+      if (sh = @security_handler) &&
+         !value.is_a?(Objects::Stream) &&
+         obj_num != @encrypt_object_number
         decrypt_strings_in_place(value, obj_num, gen_num, sh)
       end
 

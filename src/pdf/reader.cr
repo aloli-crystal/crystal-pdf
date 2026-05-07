@@ -168,6 +168,14 @@ module PDF
 
       @parser.security_handler = ssh
 
+      # Mémoriser le numéro d'objet du dict /Encrypt pour que le
+      # parser ne tente PAS de déchiffrer les strings qu'il contient
+      # (/O, /U, /OE, /UE, /Perms ne sont pas chiffrées par /Encrypt
+      # — spec § 7.6.2).
+      if (ref = encrypt_obj.as?(Objects::Reference))
+        @parser.encrypt_object_number = ref.object_number
+      end
+
       # IMPORTANT : invalider les caches d'objets déjà lus.
       # `parse!` a peut-être résolu certains objets (xref stream,
       # /Info) sans déchiffrement parce que le handler n'était pas
