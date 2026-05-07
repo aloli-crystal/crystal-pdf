@@ -15,7 +15,7 @@
 # pdf.save("output.pdf")
 # ```
 module PDF
-  VERSION = "0.5.2"
+  VERSION = "0.5.3"
 
   # PDF version to generate (1.7 = ISO 32000-1:2008)
   PDF_VERSION = "1.7"

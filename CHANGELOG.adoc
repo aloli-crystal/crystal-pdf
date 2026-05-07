@@ -7,6 +7,32 @@ All notable changes to pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v0.5.3 — 2026-05-07
+
+=== Fixed
+
+* **Pages vides après fusion d'un PDF normalisé Ghostscript.** Le
+  parser ne savait résoudre les références indirectes `/Length`
+  d'un content stream que via `@xref` (objets uncompressed). Quand
+  le `/Length` pointait sur un objet **stocké dans un object stream**
+  (PDF 1.5+, structure générée par défaut par `gs ≥ 9.x`), la
+  longueur restait à 0 → on lisait 0 octets → la page apparaissait
+  vide après fusion.
++
+Cas réel : livret « 2026-05-08--messe-laguiole » avec une partition
+chiffrée RC4 d'origine, normalisée via `gs` (selon le contournement
+documenté), produisait un livret avec deux pages vides numérotées
+mais sans contenu visible.
++
+Fix : `parse_stream` consulte maintenant `resolve_compressed_object`
+en fallback quand `@xref` ne contient pas l'objet référencé.
+
+* Spec d'intégration ajoutée
+  (`spec/pdf/integration/length_in_object_stream_spec.cr`) qui
+  reproduit le scénario : génère un PDF, le passe par `gs`, vérifie
+  que le reader retrouve bien le contenu sur les pages
+  re-compressées avec `/Length` indirect compressé.
+
 == v0.5.2 — 2026-05-07
 
 === Fixed

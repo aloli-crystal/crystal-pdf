@@ -311,15 +311,24 @@ module PDF
         when Objects::Number
           length = len_obj.to_i64
         when Objects::Reference
-          # Résoudre la référence pour obtenir la longueur
-          # On doit analyser l'objet référencé
-          if offset = @xref[len_obj.object_number]?
-            saved_pos = @pos
-            indirect = parse_object_at(offset)
-            @pos = saved_pos
-            if num = indirect.value.as?(Objects::Number)
-              length = num.to_i64
+          # Résoudre la référence indirecte pour récupérer la
+          # longueur. Deux chemins possibles :
+          # * objet uncompressed (offset dans @xref)
+          # * objet compressé (PDF 1.5+, dans un object stream)
+          # `parse_object_at` et `resolve_compressed_object` modifient
+          # `@pos`, on encadre donc l'appel d'un save/restore.
+          saved_pos = @pos
+          length_value =
+            if offset = @xref[len_obj.object_number]?
+              parse_object_at(offset).value
+            elsif (compressed = resolve_compressed_object(len_obj.object_number))
+              compressed.value
+            else
+              nil
             end
+          @pos = saved_pos
+          if num = length_value.try(&.as?(Objects::Number))
+            length = num.to_i64
           end
         end
       end
