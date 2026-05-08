@@ -34,6 +34,12 @@ module PDF
 
     # Font resources used on this page (name -> reference)
     @font_resources : Hash(String, Objects::Reference)
+    # Clés `F<n>` attribuées aux Type1 — séparé pour éviter la collision
+    # avec les TTF dont les clés sont calculées à l'enregistrement avec
+    # la même formule mais stockées dans `@truetype_font_resources`.
+    # Sans ça, deux fontes finissent avec la même clé `F<n>` dans le
+    # `/Resources /Font` du PDF et le rendu écrase l'une avec l'autre.
+    @font_resource_keys : Hash(String, String)
 
     # TrueType font resources (font object -> resource data)
     @truetype_font_resources : Hash(Fonts::TrueTypeFont, TrueTypeFontResources)
@@ -101,6 +107,7 @@ module PDF
     def initialize(@document : Document, @width : Float64 = 612.0, @height : Float64 = 792.0)
       @content = IO::Memory.new
       @font_resources = {} of String => Objects::Reference
+      @font_resource_keys = {} of String => String
       @truetype_font_resources = {} of Fonts::TrueTypeFont => TrueTypeFontResources
       @image_resources = {} of Images::Base => ImageResources
       @ext_g_state_resources = {} of UInt64 => ExtGStateResources
@@ -168,8 +175,18 @@ module PDF
       # Register font with document and track resource
       font_obj = @document.font(name)
       unless @font_resources.has_key?(name)
+        # Calcul de la clé AVANT l'ajout au hash, en tenant compte des
+        # TTF déjà enregistrés sur la page (mêmes formule + ordre que
+        # `register_truetype_font` plus bas). Sans ça, un Type1 ajouté
+        # APRÈS un TTF prend une clé `F<n>` qui collisionne avec celle
+        # du TTF, et le rendu de l'un écrase l'autre dans le dict
+        # /Resources /Font de la page → le texte devient invisible
+        # côté reader (ex. Acrobat interprète les bytes WinAnsi du
+        # Type1 comme un encodage TTF).
+        key = "F#{@font_resources.size + @truetype_font_resources.size + 1}"
         font_indirect = @document.register_object(font_obj.to_dictionary)
         @font_resources[name] = font_indirect.reference
+        @font_resource_keys[name] = key
       end
 
       self
@@ -1591,9 +1608,13 @@ module PDF
     end
 
     private def font_resource_key(font_name : String) : String
-      # Create a simple key like F1, F2, etc.
-      index = @font_resources.keys.index(font_name) || @font_resources.size
-      "F#{index + 1}"
+      # Lookup direct dans le hash dédié — clés assignées à
+      # l'enregistrement (voir `page.font(name : String)`) en tenant
+      # compte des TTF pour éviter les collisions `F<n>`.
+      # Fallback historique pour les Type1 enregistrés avant l'ajout
+      # du hash (improbable mais on garde pour la robustesse).
+      @font_resource_keys[font_name]? ||
+        "F#{(@font_resources.keys.index(font_name) || @font_resources.size) + 1}"
     end
 
     private def encode_text_string(text : String, font_name : String) : String

@@ -7,6 +7,35 @@ All notable changes to pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v0.5.5 — 2026-05-08
+
+=== Fixed
+
+* **Collision de clés `F<n>` dans `/Resources /Font` quand on mélange
+  des polices Type1 et TrueType sur la même page.** Le rendu d'un
+  texte Type1 ajouté APRÈS un TTF était **invisible** : le
+  `font_resource_key` calculait l'index dans `@font_resources` SANS
+  tenir compte des TTF déjà enregistrés dans `@truetype_font_resources`,
+  produisant une clé `F<n>` qui collisionnait avec celle du TTF.
+  Acrobat / pdfinfo / pdftotext interprétaient alors les bytes
+  WinAnsi du Type1 comme des codes glyphes TTF et ne rendaient rien.
++
+Cas réel : `crystal-asciidoctor-pdf` rendait un mot en
+**bold-italic** (ex. `*_mécanique_*`) qui **disparaissait** du PDF.
+Le thème par défaut de ce shard charge DejaVu Sans pour body / bold
+/ italic mais **pas** pour bold-italic ; le rendu fallback sur
+`Helvetica-BoldOblique` (Type1 standard), et la collision F<n> avec
+le TTF DejaVu déjà actif rendait le mot invisible.
++
+Fix : la clé `F<n>` est désormais assignée à l'enregistrement du
+Type1 (formule unifiée avec celle des TTF :
+`F#{font_resources.size + truetype_font_resources.size + 1}`) et
+stockée dans `@font_resource_keys`. Plus de collision possible.
++
+Spec d'intégration `font_key_collision_spec.cr` qui vérifie qu'un
+PDF mélangeant TTF → Type1 → TTF produit deux clés distinctes dans
+le content stream.
+
 == v0.5.4 — 2026-05-07
 
 === Fixed
