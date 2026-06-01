@@ -7,6 +7,59 @@ Toutes les évolutions notables de pdf sont consignées ici. Le
 format suit https://keepachangelog.com/fr/1.1.0/[Keep a Changelog] et
 le versionnage respecte https://semver.org/lang/fr/[SemVer].
 
+== v0.6.0 — 2026-06-01 — clôture du jalon J1
+
+Cette version clôture le jalon **J1** de la trajectoire ISO PDF
+(cf. `doc/RATIONALE.adoc`). Le shard sait désormais produire des
+documents qui exercent tous les prérequis de PDF/A-2b / PDF/A-3 :
+
+* Gestion couleur calibrée (OutputIntent + ICCBased — v0.5.8)
+* Formulaires interactifs avec signatures, apparences custom et
+  drapeaux étendus (AcroForm — v0.5.7 à v0.5.10)
+* Fichiers attachés (Embedded files — v0.5.11)
+* Cross-references modernes (XRef streams — cette version)
+* Objets compressés (Object streams — cette version)
+* Couleurs spot / multi-canal (Separation, DeviceN — cette version)
+
+Le prochain jalon (J2 — Tagged PDF / structure tree) démarre sur
+la même base de code.
+
+=== Ajouté
+
+* **Cross-reference streams (`/Type /XRef`).** Nouveau
+  `Document#xref_format = :stream` qui bascule du bloc classique
+  `xref ... trailer ... %%EOF` vers un cross-reference stream
+  compressé Flate (PDF 1.5+). Le dict du stream porte les entrées
+  de trailer (`/Size`, `/Root`, `/Info`, `/Encrypt`, `/ID`, `/W`)
+  et la table d'entrées binaires.
+
+* **Object streams (`/Type /ObjStm`).** Nouveau
+  `Document#object_streams = true` qui regroupe tous les objets
+  indirects compressibles (dict, array, name, number, string,
+  booléen, null) dans un seul ObjStm compressé Flate. Les streams
+  restent autonomes. Activer object_streams force automatiquement
+  `xref_format = :stream` (les entries type 2 sont indispensables
+  pour référencer les objets compressés).
+
+* **Espace couleurs Separation.** `PDF::ColorSpaces::Separation` —
+  encres spot (Pantone, Cutter, etc.) avec un fallback `ICCBased`
+  et un tint transform Type-2 linéaire. Compatible PDF/A-2b
+  couplé à FOGRA39.
+
+* **Espace couleurs DeviceN.** `PDF::ColorSpaces::DeviceN` — N
+  canaux spot ou processus. Le tint transform MVP somme les
+  contributions par composante ; un usage en production devrait
+  passer par un FunctionType 4 pour la précision.
+
+=== Modifié
+
+* Writer réécrit pour supporter trois modes : table classique
+  (`xref_format = :table`), xref stream (`:stream`), xref stream
+  + object streams (`object_streams = true`).
+* Les documents avec object_streams sont typiquement 8-20 % plus
+  petits que les mêmes en mode classique. Le gain exact dépend
+  du nombre d'objets indirects compressibles.
+
 == v0.5.11 — 2026-06-01
 
 === Ajouté

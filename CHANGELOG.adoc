@@ -7,6 +7,59 @@ All notable changes to pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v0.6.0 — 2026-06-01 — J1 milestone closure
+
+This release closes milestone **J1** of the ISO PDF trajectory
+(cf. `doc/RATIONALE.adoc`). The shard now generates documents that
+exercise every prerequisite of PDF/A-2b / PDF/A-3 :
+
+* Calibrated colour management (OutputIntent + ICCBased — v0.5.8)
+* Interactive forms with signatures, custom appearances and extended
+  flags (AcroForm — v0.5.7 to v0.5.10)
+* File attachments (Embedded files — v0.5.11)
+* Modern cross-reference encoding (XRef streams — this release)
+* Compressed objects (Object streams — this release)
+* Spot / multi-channel colour (Separation, DeviceN — this release)
+
+The next milestone (J2 — Tagged PDF / structure tree) starts from
+the same code base.
+
+=== Added
+
+* **Cross-reference streams (`/Type /XRef`).** New
+  `Document#xref_format = :stream` switches from the classic
+  `xref ... trailer ... %%EOF` block to a Flate-compressed
+  cross-reference stream (PDF 1.5+). The stream dict carries the
+  trailer entries (`/Size`, `/Root`, `/Info`, `/Encrypt`, `/ID`,
+  `/W`) and the binary entry table.
+
+* **Object streams (`/Type /ObjStm`).** New
+  `Document#object_streams = true` groups every compressible
+  indirect (dict, array, name, number, string, boolean, null) into
+  a single Flate-compressed ObjStm. Streams stay standalone.
+  Activating object streams forces `xref_format = :stream`
+  (type-2 cross-ref entries are required to reference compressed
+  objects).
+
+* **Separation colour space.** `PDF::ColorSpaces::Separation` —
+  spot inks (Pantone, Cutter, etc.) with an `ICCBased` fallback
+  and a Type-2 linear tint transform. Compatible with PDF/A-2b
+  when paired with FOGRA39.
+
+* **DeviceN colour space.** `PDF::ColorSpaces::DeviceN` — N-channel
+  spot or process colour. MVP tint transform sums per-component
+  contributions ; production usage should provide a
+  FunctionType 4 tint for accuracy.
+
+=== Changed
+
+* Writer rewritten to support three operating modes : classic table
+  (`xref_format = :table`), xref stream (`:stream`), and xref stream
+  + object streams (`object_streams = true`).
+* Documents with object streams are typically 8-20 % smaller than
+  the same documents in classic mode. The exact gain depends on
+  the number of compressible indirects.
+
 == v0.5.11 — 2026-06-01
 
 === Added

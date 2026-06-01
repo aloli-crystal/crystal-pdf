@@ -85,6 +85,34 @@ module PDF
     # Populated via `Document#attach_file`.
     @attached_files : Array(FileSpec) = [] of FileSpec
 
+    # Cross-reference format selector :
+    # * `:table` (default) — classic `xref ... trailer << ... >>`
+    #   block. Maximum viewer compatibility, slightly more verbose.
+    # * `:stream` — `/Type /XRef` cross-reference stream (PDF 1.5+).
+    #   Compresses the cross-ref table with Flate, embeds the
+    #   trailer in the stream dict. Required by Object streams (J1).
+    property xref_format : Symbol = :table
+
+    # When `object_streams` is true, the writer groups all compressible
+    # indirect objects (dicts, arrays, names, numbers, strings, bools,
+    # nulls) into a single `/Type /ObjStm` and references them with
+    # type-2 entries in the cross-reference stream. Streams remain
+    # standalone indirect objects.
+    #
+    # Setting `object_streams = true` requires `xref_format = :stream`
+    # (a classic `xref` table cannot reference compressed objects).
+    # The setter performs that switch automatically.
+    @object_streams : Bool = false
+
+    def object_streams=(value : Bool) : Bool
+      @xref_format = :stream if value
+      @object_streams = value
+    end
+
+    def object_streams? : Bool
+      @object_streams
+    end
+
     # AcroForm's catalog reference, computed by `finalize!` *before*
     # pages are finalized so that widget annotations are attached
     # to the right pages' /Annots arrays.

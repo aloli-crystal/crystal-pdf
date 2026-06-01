@@ -14,11 +14,17 @@ module PDF
       # The document being written
       getter document : Document
 
-      # Object byte offsets for xref table
+      # Object byte offsets for xref table (regular indirect objects).
       @offsets : Hash(Int32, Int64)
+
+      # When object_streams are enabled, this hash maps a compressed
+      # object number to {ObjStm container number, index in ObjStm}.
+      # Used by `build_xref_indirect` to emit type-2 entries.
+      @compressed : Hash(Int32, Tuple(Int32, Int32))
 
       def initialize(@document : Document)
         @offsets = {} of Int32 => Int64
+        @compressed = {} of Int32 => Tuple(Int32, Int32)
       end
 
       # Writes the complete PDF to the given IO.
@@ -49,23 +55,52 @@ module PDF
         io << header
         position += header.bytesize
 
-        # Write all objects
+        # Object streams (PDF spec § 7.5.7) : group compressible
+        # indirect objects (dict, array, number, string, name, bool,
+        # null) into a single `/Type /ObjStm`. Streams stay
+        # standalone. Only runs if `object_streams?` is true ; the
+        # mode also forces `xref_format = :stream` upstream.
+        objstm_indirect = nil
+        if @document.object_streams?
+          objstm_indirect = build_object_stream
+        end
+
+        # Write all objects. If `objstm_indirect` is set, skip the
+        # objects that ended up inside it (they're now referenced
+        # via type-2 xref entries).
+        compressible = @compressed.keys.to_set
         @document.objects.each do |obj|
+          next if compressible.includes?(obj.object_number)
           @offsets[obj.object_number] = position
           content = obj.to_pdf + "\n"
           io << content
           position += content.bytesize
         end
 
-        # Write xref table
-        xref_start = position
-        xref = write_xref
-        io << xref
-        position += xref.bytesize
+        # Write the ObjStm itself (if any) as a regular indirect.
+        if oi = objstm_indirect
+          @offsets[oi.object_number] = position
+          content = oi.to_pdf + "\n"
+          io << content
+          position += content.bytesize
+        end
 
-        # Write trailer
-        trailer = write_trailer(xref_start, info_ref, encrypt_obj_num)
-        io << trailer
+        xref_start = position
+
+        case @document.xref_format
+        when :stream
+          # Cross-reference stream (PDF 1.5+) — embeds the trailer.
+          xref_num = @document.allocate_object_id
+          @offsets[xref_num] = xref_start
+          xref_indirect = build_xref_indirect(xref_num, info_ref, encrypt_obj_num)
+          io << xref_indirect.to_pdf << "\n"
+          io << "startxref\n" << xref_start << "\n%%EOF\n"
+        else
+          # Classic xref table + trailer.
+          xref = write_xref
+          io << xref
+          io << write_trailer(xref_start, info_ref, encrypt_obj_num)
+        end
       end
 
       # Chiffre tous les streams et toutes les strings indirectes
@@ -195,6 +230,161 @@ module PDF
           io << xref_start
           io << "\n%%EOF\n"
         end
+      end
+
+      # Builds an object stream (PDF spec § 7.5.7) containing every
+      # compressible indirect object of the document, and registers
+      # each compressed object's `(container, index)` in `@compressed`
+      # so the xref stream can emit type-2 entries.
+      #
+      # Returns the `Indirect` wrapping the new ObjStm, or nil if
+      # nothing was compressible.
+      private def build_object_stream : Objects::Indirect?
+        # Encryption forbids putting the /Encrypt dict (and a few
+        # other special objects) in an ObjStm. We skip any object
+        # whose number equals the encrypt slot.
+        encrypt_num = @document.security_handler.try do |h|
+          # Try to locate the registered /Encrypt indirect by looking
+          # for the dict that contains /Filter /Standard.
+          @document.objects.find do |ind|
+            d = ind.value
+            d.is_a?(Objects::Dictionary) && d["Filter"]?.try(&.to_pdf) == "/Standard"
+          end.try(&.object_number)
+        end
+
+        candidates = @document.objects.select do |ind|
+          case ind.value
+          when Objects::Stream then false # streams stay standalone
+          when Objects::Dictionary        # most dicts can be compressed
+            ind.object_number != encrypt_num
+          else
+            true # arrays, numbers, names, strings, bools, nulls
+          end
+        end
+        return nil if candidates.empty?
+
+        # Reserve the object number for the ObjStm itself.
+        objstm_num = @document.allocate_object_id
+
+        # Serialize each compressed object's body (no `obj`/`endobj`
+        # markers — just its value's PDF representation). Track the
+        # offsets inside the decoded payload.
+        bodies = String.build do |sb|
+          candidates.each_with_index do |ind, idx|
+            @compressed[ind.object_number] = {objstm_num, idx}
+            sb << ind.value.to_pdf
+            sb << "\n"
+          end
+        end
+
+        # Build the leading index (objNum offsetInPayload pairs).
+        offset = 0
+        index = String.build do |sb|
+          candidates.each do |ind|
+            sb << ind.object_number << " " << offset << " "
+            offset += ind.value.to_pdf.bytesize + 1 # +1 for "\n"
+          end
+        end.rstrip(' ')
+
+        payload = "#{index}\n#{bodies}"
+        first_byte = index.bytesize + 1 # past the "\n"
+
+        stream = Objects::Stream.new
+        stream["Type"] = Objects::Name.new("ObjStm")
+        stream["N"] = Objects::Number.new(candidates.size)
+        stream["First"] = Objects::Number.new(first_byte)
+        stream.data = payload
+        stream.add_filter(Filters::Flate.new)
+
+        Objects::Indirect.new(objstm_num, stream)
+      end
+
+      # Builds the cross-reference stream as an Indirect object.
+      # The stream contains binary entries `[type, offset, gen]`, one
+      # per object slot. Widths are chosen to fit the largest offset.
+      private def build_xref_indirect(
+        xref_num : Int32,
+        info_ref : Objects::Reference?,
+        encrypt_obj_num : Int32?,
+      ) : Objects::Indirect
+        # The xref entry table covers object 0..xref_num inclusive.
+        total = xref_num + 1
+
+        max_offset = @offsets.values.max
+        w_offset = bytes_needed(max_offset)
+        w_gen = 2 # 2 bytes always suffice (max 65535)
+
+        payload = IO::Memory.new
+        # Object 0 : free, offset 0, generation 65535.
+        write_xref_entry(payload, 0, 0_i64, 65535, w_offset, w_gen)
+        (1..xref_num).each do |n|
+          if entry = @compressed[n]?
+            # Type 2 : object n lives inside ObjStm entry[0] at
+            # index entry[1]. Generation is always 0 for compressed.
+            write_xref_entry(payload, 2, entry[0].to_i64, entry[1], w_offset, w_gen)
+          else
+            offset = @offsets[n]? || 0_i64
+            # Type 1 : regular in-use indirect at byte offset.
+            write_xref_entry(payload, 1, offset, 0, w_offset, w_gen)
+          end
+        end
+
+        stream = Objects::Stream.new
+        stream["Type"] = Objects::Name.new("XRef")
+        stream["Size"] = Objects::Number.new(total)
+        stream["Root"] = @document.catalog.reference
+        if ref = info_ref
+          stream["Info"] = ref
+        end
+        if num = encrypt_obj_num
+          stream["Encrypt"] = Objects::Reference.new(num)
+        end
+        if @document.security_handler || @document.has_file_id?
+          id_str = Objects::Str.new(String.new(@document.file_id), hex: true)
+          id_arr = Objects::Array.new
+          id_arr << id_str
+          id_arr << id_str
+          stream["ID"] = id_arr
+        end
+        w = Objects::Array.new
+        w << Objects::Number.new(1)
+        w << Objects::Number.new(w_offset)
+        w << Objects::Number.new(w_gen)
+        stream["W"] = w
+        stream.data = payload.to_slice
+        stream.add_filter(Filters::Flate.new)
+
+        Objects::Indirect.new(xref_num, stream)
+      end
+
+      # Writes a single xref entry as `1 + w_offset + w_gen` bytes
+      # (big-endian).
+      private def write_xref_entry(
+        io : IO,
+        type : Int32,
+        offset : Int64,
+        gen : Int32,
+        w_offset : Int32,
+        w_gen : Int32,
+      ) : Nil
+        io.write_byte(type.to_u8)
+        write_big_endian(io, offset, w_offset)
+        write_big_endian(io, gen.to_i64, w_gen)
+      end
+
+      private def write_big_endian(io : IO, value : Int64, width : Int32) : Nil
+        (width - 1).downto(0) do |i|
+          io.write_byte(((value >> (i * 8)) & 0xff).to_u8)
+        end
+      end
+
+      # Smallest number of bytes needed to encode `n` as unsigned.
+      private def bytes_needed(n : Int) : Int32
+        return 1 if n < 0x100
+        return 2 if n < 0x10000
+        return 3 if n < 0x1000000
+        return 4 if n < 0x100000000
+        8
       end
 
       private def bytes_to_hex(bytes : Bytes) : String

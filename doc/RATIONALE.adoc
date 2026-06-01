@@ -389,7 +389,7 @@ appearance streams custom, le code J0 sera étendu, pas refait.
 
 Cinq jalons (J1 à J5), chacun de l'ordre de 3 à 5 mois.
 
-=== J1 — Compléter ISO 32000-1 (3 à 4 mois)
+=== J1 — Compléter ISO 32000-1 ✅ Clos 2026-06-01 (cible `pdf 0.6.0`)
 
 Objectif : combler les trous structurels du noyau qui débloquent les
 profils dérivés.
@@ -731,13 +731,18 @@ couvre fonctionnellement avec un PDF 1.7 sous-jacent.
   ISO dans chaque règle.
 . **J0 — AcroForm interactif avant J1** : besoin métier immédiat
   pour formulaires remplissables. MVP 2-3 semaines avec
-  `/NeedAppearances true`. Cible `pdf 0.5.6`.
+  `/NeedAppearances true`. Cible `pdf 0.5.6`. ✅ Livré v0.5.7.
 . **Profils ICC par défaut** (J1) : sRGB v4 (color.org, CC0) pour
   le RGB et Coated FOGRA39 / ISOcoated_v2_eci (ECI 2009, libre)
   pour le CMYK européen. Embarqués directement dans
   `src/pdf/data/icc/`, accessibles via `ColorSpaces::ICCBased.srgb_v4`
   et `.fogra39`. Coût : +1,8 Mo dans le shard, acceptable face au
-  bénéfice (PDF self-contained sans dépendance externe).
+  bénéfice (PDF self-contained sans dépendance externe). ✅ Livré v0.5.8.
+. **J1 clos 2026-06-01** (cible `pdf 0.6.0` atteinte) : OutputIntent +
+  ICCBased (v0.5.8) ; AcroForm complet — signature, appearance
+  custom, drapeaux étendus (v0.5.7 à v0.5.10) ; Embedded files /
+  PDF/A-3 / Factur-X (v0.5.11) ; XRef streams + Object streams +
+  Separation + DeviceN (v0.6.0). Prochaine étape : J2 — Tagged PDF.
 
 === Ouvertes (à trancher selon avancement)
 
