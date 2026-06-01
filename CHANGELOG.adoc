@@ -7,6 +7,26 @@ All notable changes to pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v0.5.6 — 2026-06-01
+
+=== Fixed
+
+* **Explicit rejection of OpenType/CFF (`.otf`) fonts at load time.**
+  Before this fix, loading a `.otf` font (sfnt header `OTTO`) passed
+  silently and only crashed deep in the subsetter with the cryptic
+  message `Missing required table: glyf`. `PDF::Fonts::TrueTypeFont.load`
+  now raises `UnsupportedFontFormat` with an actionable message that
+  explains only TrueType outlines (the `glyf` table) are supported
+  and suggests converting the file via fontforge.
+
+=== Removed
+
+* Cleanup of two stray files under `docs/` that described
+  `crystal-asciidoctor-pdf` (not this shard) and were left over from
+  a generated documentation pass : `DEVELOPMENT_ROADMAP.adoc` and
+  `ROADMAP_ANALYSIS.adoc`. The active Antora documentation
+  (`docs/antora.yml` and `docs/modules/`) is preserved.
+
 == v0.5.5 — 2026-05-08
 
 === Fixed

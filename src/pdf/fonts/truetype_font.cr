@@ -34,11 +34,47 @@ module PDF
       # Cache for subset font data
       @subset_data : Bytes?
 
+      # Raised when a font file is recognized (valid sfnt header) but
+      # its outline format is not supported by this shard. Currently
+      # only TrueType outlines (`glyf` table) are handled ; OpenType
+      # fonts with CFF/CFF2 outlines (`.otf`) are detected and rejected
+      # here rather than failing later during subsetting with a less
+      # helpful "Missing required table: glyf" error.
+      class UnsupportedFontFormat < Exception
+      end
+
       def initialize(@parser : TrueType::Parser)
+        unless @parser.truetype?
+          raise UnsupportedFontFormat.new(unsupported_message)
+        end
         @subset_prefix = generate_subset_prefix
         @subsetter = TrueType::Subsetter.new(@parser)
         @used_chars = Set(Char).new
         @subset_data = nil
+      end
+
+      # Builds a user-actionable error message for the unsupported
+      # font format detected on `@parser`. Kept as a private helper
+      # so the constructor stays readable.
+      private def unsupported_message : String
+        if @parser.cff?
+          <<-MSG
+          OpenType font with CFF outlines (.otf) is not yet supported.
+
+          Current support : TrueType outlines (.ttf, .ttc with glyf table).
+          Detected sfnt version : 'OTTO' (CFF/CFF2).
+
+          Workarounds :
+            * Convert the .otf to .ttf with fontforge :
+                fontforge -lang=ff -c 'Open($1); Generate($2)' input.otf output.ttf
+            * For Noto Sans CJK, use the .ttc TrueType Collection variant
+              instead of the .otf (Google distributes both).
+
+          Native CFF support is planned for J1+ ; see doc/RATIONALE.adoc.
+          MSG
+        else
+          "Unsupported sfnt version. Only TrueType outlines (glyf table) are handled by this shard."
+        end
       end
 
       # Load a TrueType font from a file path

@@ -14,6 +14,24 @@ describe PDF::Fonts::TrueTypeFont do
       font = PDF::Fonts::TrueTypeFont.load(data)
       font.should be_a(PDF::Fonts::TrueTypeFont)
     end
+
+    it "rejects OpenType/CFF (.otf) fonts with an actionable error message at load time" do
+      # Minimal valid OTTO header (sfnt 'OTTO' = CFF outlines, 0 tables).
+      # The parser accepts this version, but the font has no glyf table
+      # and would later crash inside the subsetter with a cryptic
+      # "Missing required table: glyf". This regression check ensures
+      # we surface a helpful error at load instead.
+      otto = Bytes[
+        0x4F, 0x54, 0x54, 0x4F, # sfnt_version 'OTTO' (CFF)
+        0x00, 0x00,             # num_tables = 0
+        0x00, 0x00,             # search_range
+        0x00, 0x00,             # entry_selector
+        0x00, 0x00,             # range_shift
+      ]
+      expect_raises(PDF::Fonts::TrueTypeFont::UnsupportedFontFormat, /CFF|fontforge|\.otf/) do
+        PDF::Fonts::TrueTypeFont.load(otto)
+      end
+    end
   end
 
   describe "#name" do
