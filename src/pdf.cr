@@ -124,5 +124,8 @@ require "./pdf/color_spaces/icc_based"
 # Output intents — colour reproduction declaration (PDF spec § 14.11.5)
 require "./pdf/output_intent"
 
+# Embedded files (PDF spec § 7.11.4) — for PDF/A-3, Factur-X, ZUGFeRD
+require "./pdf/embedded_file"
+
 # Interactive forms (AcroForm — PDF spec § 12.7)
 require "./pdf/acroform"

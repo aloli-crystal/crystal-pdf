@@ -7,6 +7,49 @@ Toutes les évolutions notables de pdf sont consignées ici. Le
 format suit https://keepachangelog.com/fr/1.1.0/[Keep a Changelog] et
 le versionnage respecte https://semver.org/lang/fr/[SemVer].
 
+== v0.5.11 — 2026-06-01
+
+=== Ajouté
+
+* **Fichiers embarqués — Phase 2 de la trajectoire ISO PDF (J1).**
+  Les documents PDF peuvent désormais porter des fichiers attachés
+  arbitraires (PDF spec § 7.11), ce qui débloque la conformance
+  PDF/A-3 et les factures électroniques Factur-X / ZUGFeRD.
++
+[source,crystal]
+----
+pdf.attach_file(
+  path: "factur-x.xml",
+  description: "Données de facturation Factur-X",
+  relationship: :data,        # PDF/A-3 § 6.8
+  mime_type: "application/xml",
+)
+----
+
+* **`PDF::EmbeddedFile`** — encapsule les octets bruts plus un dict
+  `/Params` qui porte `/Size`, `/CreationDate`, `/ModDate` et une
+  empreinte MD5 16 octets `/CheckSum` (PDF spec § 7.11.4). Le stream
+  est compressé Flate.
+
+* **`PDF::FileSpec`** — dict de spécification de fichier avec `/F`
+  (nom PDFDocEncoding), `/UF` (nom UTF-16BE), `/Desc`,
+  `/AFRelationship` et un sous-dict `/EF` pointant vers le stream
+  embarqué.
+
+* **Sept valeurs `/AFRelationship`** : `:data`, `:source`,
+  `:alternative`, `:supplement`, `:unspecified` (PDF/A-3 § 6.8) plus
+  `:encrypted_payload` et `:form_data` (ajouts PDF 2.0).
+
+* **`examples/factur_x.cr`** — démo end-to-end qui produit un PDF
+  avec un XML façon Factur-X embarqué en `/AFRelationship /Data`.
+
+=== Modifié
+
+* `PDF::Document#attach_file` accepte `path:`, `bytes:` ou `io:`.
+  À l'écriture, le catalog gagne à la fois `/AF` (PDF 2.0 +
+  PDF/A-3 requis) et `/Names /EmbeddedFiles /Names` (legacy PDF 1.x
+  attendu par Acrobat, Preview et pdfdetach).
+
 == v0.5.10 — 2026-06-01
 
 === Ajouté

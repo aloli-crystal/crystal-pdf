@@ -81,6 +81,10 @@ module PDF
     # default appearance `/DA`). Created lazily on first access.
     @acroform_helvetica_ref : Objects::Reference?
 
+    # File specifications for attached files (PDF/A-3, Factur-X).
+    # Populated via `Document#attach_file`.
+    @attached_files : Array(FileSpec) = [] of FileSpec
+
     # AcroForm's catalog reference, computed by `finalize!` *before*
     # pages are finalized so that widget annotations are attached
     # to the right pages' /Annots arrays.
@@ -285,6 +289,67 @@ module PDF
         register_object(font_obj.to_dictionary).reference
       end
     end
+
+    # Attaches a file to the document. Becomes accessible as an
+    # `EmbeddedFile` stream + `FileSpec` dict ; the catalog gets a
+    # `/Names /EmbeddedFiles` name tree and an `/AF` array for
+    # PDF/A-3 / Factur-X conformance.
+    #
+    # Exactly one of `path:`, `bytes:` or `io:` must be provided.
+    #
+    # `relationship:` selects the `/AFRelationship` value (PDF/A-3
+    # § 6.8) — `:data` for Factur-X / ZUGFeRD XML, `:source` for
+    # the file the PDF was generated from, etc.
+    #
+    # ```
+    # pdf.attach_file(
+    #   path: "factur-x.xml",
+    #   description: "Factur-X invoice data",
+    #   relationship: :data,
+    #   mime_type: "application/xml",
+    # )
+    # ```
+    def attach_file(
+      *,
+      path : String? = nil,
+      bytes : Bytes? = nil,
+      io : IO? = nil,
+      name : String? = nil,
+      description : String? = nil,
+      relationship : Symbol = :unspecified,
+      mime_type : String? = nil,
+    ) : FileSpec
+      ef = case
+           when path
+             name ||= File.basename(path)
+             EmbeddedFile.from_file(path, mime_type)
+           when bytes
+             EmbeddedFile.new(bytes, mime_type)
+           when io
+             content = io.gets_to_end.to_slice
+             EmbeddedFile.new(content, mime_type)
+           else
+             raise ArgumentError.new("attach_file requires one of path:, bytes:, or io:")
+           end
+
+      raise ArgumentError.new("attach_file requires a `name:` when bytes/io is given") if name.nil?
+
+      spec = FileSpec.new(
+        name: name,
+        embedded_file: ef,
+        description: description,
+        relationship: relationship,
+      )
+      @attached_files << spec
+      spec
+    end
+
+    # `true` if at least one file is attached.
+    def attached_files? : Bool
+      !@attached_files.empty?
+    end
+
+    getter attached_files : Array(FileSpec)
 
     # Chiffre le document avec un mot de passe et un niveau de
     # protection (RC4 128-bit, AES-128 ou AES-256).
@@ -566,6 +631,47 @@ module PDF
         intents = Objects::Array.new
         intents << intent_obj.reference
         dict["OutputIntents"] = intents
+      end
+
+      # Add attached files (PDF/A-3, Factur-X). Each FileSpec is
+      # registered as an indirect object ; the catalog gets a /AF
+      # array (PDF 2.0, accepted by PDF/A-3 validators) and a
+      # /Names /EmbeddedFiles name tree (PDF 1.x compatibility).
+      unless @attached_files.empty?
+        af_refs = [] of Objects::Reference
+        name_tree_entries = [] of {String, Objects::Reference}
+
+        @attached_files.each do |spec|
+          ef_stream = spec.embedded_file.to_stream
+          ef_obj = register_object(ef_stream)
+          spec_dict = spec.to_dictionary(ef_obj.reference)
+          spec_obj = register_object(spec_dict)
+          af_refs << spec_obj.reference
+          name_tree_entries << {spec.name, spec_obj.reference}
+        end
+
+        # /AF — PDF 2.0 and PDF/A-3 location.
+        af = Objects::Array.new
+        af_refs.each { |r| af << r }
+        dict["AF"] = af
+
+        # /Names /EmbeddedFiles /Names [name spec name spec ...] —
+        # PDF 1.x legacy location, still expected by many viewers.
+        names_subdict = Objects::Dictionary.new
+        names_arr = Objects::Array.new
+        name_tree_entries.each do |entry|
+          names_arr << Objects::Str.new(entry[0])
+          names_arr << entry[1]
+        end
+        names_subdict["Names"] = names_arr
+
+        embedded_files = Objects::Dictionary.new
+        embedded_files["EmbeddedFiles"] = names_subdict
+
+        # Merge with an existing /Names if /Dests already created
+        # one (named destinations). For the MVP we replace ; named
+        # destinations live under /Dests, not /Names.
+        dict["Names"] = embedded_files
       end
 
       # Add XMP metadata
