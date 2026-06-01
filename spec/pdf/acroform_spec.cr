@@ -73,6 +73,33 @@ describe PDF::AcroForm do
       (ff & PDF::AcroForm::TextField::MULTILINE).should_not eq(0)
     end
 
+    it "emits an /AP appearance with the value rendered (BT/Tj sequence)" do
+      pdf = PDF::Document.new
+      page = pdf.page { |_| }
+      pdf.acroform do |form|
+        form.text_field("nom", page: page, x: 0, y: 0, width: 200, height: 20, value: "Dupont")
+      end
+
+      bytes = pdf.to_slice
+      out = bytes.map(&.chr).join
+      out.should contain("/AP")
+      out.should contain("/Subtype /Form")
+      out.should contain("(Dupont) Tj")
+    end
+
+    it "renders password fields with masking dots in the appearance" do
+      pdf = PDF::Document.new
+      page = pdf.page { |_| }
+      pdf.acroform do |form|
+        form.text_field("pwd", page: page, x: 0, y: 0, width: 200, height: 20, value: "secret", password: true)
+      end
+
+      bytes = pdf.to_slice
+      out = bytes.map(&.chr).join
+      out.should contain("(******) Tj") # 6 asterisks for "secret"
+      out.should_not contain("(secret) Tj")
+    end
+
     it "encodes Required and ReadOnly in /Ff" do
       pdf = PDF::Document.new
       page = pdf.page { |_| }
@@ -420,6 +447,46 @@ describe PDF::AcroForm do
       # The kids are attached during finalize! ; we just confirm
       # the parent computed its rect from the codes count.
       field.option_codes.size.should eq(2)
+    end
+  end
+
+  describe "SignatureField" do
+    it "builds a /Sig field with no /V (signed later by pdf-signature)" do
+      pdf = PDF::Document.new
+      page = pdf.page { |_| }
+      field = nil
+      pdf.acroform do |form|
+        field = form.signature_field("contract_sig", page: page, x: 100, y: 100, width: 200, height: 80)
+      end
+
+      d = field.not_nil!.dict
+      d["FT"].to_pdf.should eq("/Sig")
+      d["Subtype"].to_pdf.should eq("/Widget")
+      d.has_key?("V").should be_false
+    end
+
+    it "sets /SigFlags 3 on /AcroForm when at least one signature field is present" do
+      pdf = PDF::Document.new
+      page = pdf.page { |_| }
+      pdf.acroform do |form|
+        form.signature_field("sig", page: page, x: 0, y: 0, width: 100, height: 40)
+      end
+
+      bytes = pdf.to_slice
+      out = bytes.map(&.chr).join
+      out.should contain("/SigFlags 3")
+    end
+
+    it "omits /SigFlags when no signature field is declared" do
+      pdf = PDF::Document.new
+      page = pdf.page { |_| }
+      pdf.acroform do |form|
+        form.text_field("nom", page: page, x: 0, y: 0, width: 100, height: 20)
+      end
+
+      bytes = pdf.to_slice
+      out = bytes.map(&.chr).join
+      out.should_not contain("/SigFlags")
     end
   end
 

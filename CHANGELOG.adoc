@@ -7,6 +7,43 @@ All notable changes to pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v0.5.9 — 2026-06-01
+
+=== Added
+
+* **Signature field (`/FT /Sig`)** for the AcroForm module. New
+  `PDF::AcroForm::SignatureField` declares a slot for a digital
+  signature ; the cryptographic payload itself is filled later by
+  `aloli-crystal/pdf-signature`. Adding any signature field
+  automatically sets `/SigFlags 3` on the `/AcroForm` dict.
++
+[source,crystal]
+----
+form.signature_field("contract", page: page, x: 100, y: 100, width: 200, height: 80)
+----
+
+* **Custom appearance streams for checkbox and dropdown** — both
+  field types now ship a Form XObject in `/AP /N` that draws the
+  field's frame and (for checkbox) its checked-state cross. This
+  removes the dependency on `/NeedAppearances true` for visibility,
+  which historically misbehaved on Preview macOS for these field
+  types.
+
+* **Custom appearance stream for text fields** — `/Tx` widgets now
+  carry an `/AP /N` Form XObject that draws the field frame and
+  the current value (or default value) using the embedded Helvetica
+  font. Password fields render their value as masking asterisks
+  (`*` per character). Auto-sized text (60 % of field height,
+  clamped between 8 and 24 pt) ; multi-line uses fixed 12 pt with
+  the baseline near the top of the field.
+
+=== Changed
+
+* `PDF::Document` exposes `acroform_helvetica_ref` — a cached
+  indirect reference to the embedded Helvetica Type1 dict, shared
+  by `/AcroForm /DR /Font /Helv` and by every text-field appearance
+  stream so the font lives as a single object.
+
 == v0.5.8 — 2026-06-01
 
 === Added

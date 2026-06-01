@@ -61,6 +61,86 @@ module PDF
             else              0
             end
         d["Q"] = Objects::Number.new(q) unless q == 0
+
+        # /AP /N normal appearance — draws the frame plus the current
+        # value (if any). Without this, viewers that ignore
+        # /NeedAppearances render the field invisible. The text is
+        # rendered in WinAnsi-compatible Helvetica ; non-ASCII chars
+        # (CJK, emoji) require user-supplied TrueType subsets, out of
+        # MVP scope.
+        ref = page.document.register_object(build_appearance(page.document.acroform_helvetica_ref))
+        ap_n = Objects::Dictionary.new
+        ap_n["N"] = ref.reference
+        d["AP"] = ap_n
+      end
+
+      private def build_appearance(helv_ref : Objects::Reference) : Objects::Stream
+        w = (@rect[2] - @rect[0]).to_f
+        h = (@rect[3] - @rect[1]).to_f
+        stream = Objects::Stream.new
+        stream["Type"] = Objects::Name.new("XObject")
+        stream["Subtype"] = Objects::Name.new("Form")
+        stream["FormType"] = Objects::Number.new(1)
+
+        bbox = Objects::Array.new
+        bbox << Objects::Number.new(0)
+        bbox << Objects::Number.new(0)
+        bbox << Objects::Number.new(w)
+        bbox << Objects::Number.new(h)
+        stream["BBox"] = bbox
+
+        # Resources : embed the /Helv font alias so the BT/Tj
+        # sequence finds the font.
+        font_res = Objects::Dictionary.new
+        font_res["Helv"] = helv_ref
+        resources = Objects::Dictionary.new
+        resources["Font"] = font_res
+        procset = Objects::Array.new
+        procset << Objects::Name.new("PDF")
+        procset << Objects::Name.new("Text")
+        resources["ProcSet"] = procset
+        stream["Resources"] = resources
+
+        # Font size : 60 % of the field height for single-line, or
+        # ~14 pt cap for multi-line (otherwise the text overflows).
+        font_size = @multiline ? 12.0 : (h * 0.6).clamp(8.0, 24.0)
+        baseline_y = @multiline ? (h - font_size - 2) : ((h - font_size) / 2 + font_size * 0.2)
+
+        io = IO::Memory.new
+        io << "q\n"
+        # Border around the field (optional but helps locate it).
+        io << "0 0 0 RG\n0.5 w\n"
+        io << "0.5 0.5 " << format_num(w - 1.0) << " " << format_num(h - 1.0) << " re\nS\n"
+
+        if v = @value
+          io << "BT\n"
+          io << "/Helv " << format_num(font_size) << " Tf\n"
+          io << "0 0 0 rg\n"
+          # Move to (left_margin, baseline). 2pt margin keeps the
+          # text from touching the border.
+          io << "2 " << format_num(baseline_y) << " Td\n"
+          escaped = escape_pdf_text(@password ? "*" * v.size : v)
+          io << "(" << escaped << ") Tj\n"
+          io << "ET\n"
+        end
+        io << "Q\n"
+
+        stream.data = io.to_s
+        stream
+      end
+
+      # Escapes a string for embedding inside PDF literal `(...)` —
+      # backslash and parentheses must be escaped. Non-ASCII bytes
+      # are passed through ; the WinAnsi encoding of Helvetica
+      # interprets them.
+      private def escape_pdf_text(s : String) : String
+        s.gsub("\\", "\\\\").gsub("(", "\\(").gsub(")", "\\)")
+      end
+
+      private def format_num(n : Float64) : String
+        s = n.round(4).to_s
+        s = s.rstrip('0').rstrip('.') if s.includes?('.')
+        s.empty? ? "0" : s
       end
     end
   end

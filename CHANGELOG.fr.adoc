@@ -7,6 +7,44 @@ Toutes les évolutions notables de pdf sont consignées ici. Le
 format suit https://keepachangelog.com/fr/1.1.0/[Keep a Changelog] et
 le versionnage respecte https://semver.org/lang/fr/[SemVer].
 
+== v0.5.9 — 2026-06-01
+
+=== Ajouté
+
+* **Champ signature (`/FT /Sig`)** dans le module AcroForm. Nouvelle
+  classe `PDF::AcroForm::SignatureField` qui déclare un emplacement
+  de signature numérique ; la charge cryptographique elle-même sera
+  ajoutée plus tard par `aloli-crystal/pdf-signature`. Tout champ
+  de signature ajouté positionne automatiquement `/SigFlags 3` sur
+  le dict `/AcroForm`.
++
+[source,crystal]
+----
+form.signature_field("contract", page: page, x: 100, y: 100, width: 200, height: 80)
+----
+
+* **Appearance streams custom pour cases à cocher et listes
+  déroulantes** — les deux types embarquent désormais un Form
+  XObject dans `/AP /N` qui dessine le cadre du champ et (pour la
+  case) la croix de l'état coché. Cela supprime la dépendance au
+  `/NeedAppearances true` pour la visibilité, qui était notoirement
+  capricieux sur Preview macOS pour ces types.
+
+* **Appearance stream custom pour les champs texte** — les widgets
+  `/Tx` portent maintenant un Form XObject `/AP /N` qui dessine le
+  cadre et la valeur (ou valeur par défaut) avec la police Helvetica
+  embarquée. Les champs `password: true` rendent leur valeur sous
+  forme d'astérisques (`*` par caractère). Taille auto à 60 % de la
+  hauteur (bornée à 8-24 pt) ; multi-ligne à 12 pt avec baseline
+  près du haut du champ.
+
+=== Modifié
+
+* `PDF::Document` expose `acroform_helvetica_ref` — une référence
+  indirecte mise en cache vers le dict Helvetica embarqué, partagée
+  par `/AcroForm /DR /Font /Helv` et par chaque appearance stream
+  de champ texte, pour que la police vive comme un seul objet.
+
 == v0.5.8 — 2026-06-01
 
 === Ajouté

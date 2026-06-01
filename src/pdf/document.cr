@@ -76,6 +76,11 @@ module PDF
     # Set via `Document#output_intent=`.
     property output_intent : OutputIntent? = nil
 
+    # Cached indirect reference to the embedded Helvetica Type1 dict.
+    # Used by AcroForm appearance streams (text field captions,
+    # default appearance `/DA`). Created lazily on first access.
+    @acroform_helvetica_ref : Objects::Reference?
+
     # AcroForm's catalog reference, computed by `finalize!` *before*
     # pages are finalized so that widget annotations are attached
     # to the right pages' /Annots arrays.
@@ -268,6 +273,16 @@ module PDF
         !f.fields.empty?
       else
         false
+      end
+    end
+
+    # Returns the indirect reference to the embedded Helvetica font
+    # used by AcroForm appearance streams. Created and cached on
+    # first call so multiple fields share a single font object.
+    def acroform_helvetica_ref : Objects::Reference
+      @acroform_helvetica_ref ||= begin
+        font_obj = font("Helvetica").as(Fonts::Type1)
+        register_object(font_obj.to_dictionary).reference
       end
     end
 

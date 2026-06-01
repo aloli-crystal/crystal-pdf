@@ -204,6 +204,31 @@ module PDF
         field
       end
 
+      # Adds a digital signature field. The signature itself
+      # (PKCS#7 / CMS / PAdES) is filled later by
+      # `aloli-crystal/pdf-signature` ; this method only declares
+      # the slot and triggers `/SigFlags 3` on the `/AcroForm` dict.
+      def signature_field(
+        name : String,
+        *,
+        page : Page,
+        x : Number,
+        y : Number,
+        width : Number,
+        height : Number,
+        required : Bool = false,
+        read_only : Bool = false,
+        no_export : Bool = false,
+      ) : SignatureField
+        rect = {x.to_f, y.to_f, x.to_f + width.to_f, y.to_f + height.to_f}
+        field = SignatureField.new(name: name, page: page, rect: rect)
+        field.required = required
+        field.read_only = read_only
+        field.no_export = no_export
+        add(field)
+        field
+      end
+
       # Registers a field and attaches its widget to the page.
       # RadioGroup is a special case : its parent dict is *not* a
       # widget annotation, only its kids are — the kids are attached
@@ -222,15 +247,15 @@ module PDF
       # pages, and returns the indirect reference to be stored in
       # the catalog. Called by `Document#build_catalog`.
       def finalize! : Objects::Reference
-        # Ensure Helvetica is loaded (used by /DR and /DA).
-        helv = @document.font("Helvetica")
-        helv_dict = helv.to_dictionary
-        helv_obj = @document.register_object(helv_dict)
+        # Reuse the document-level cached Helvetica reference so
+        # appearance streams (text fields, etc.) point at the same
+        # font object as /DR.
+        helv_ref = @document.acroform_helvetica_ref
 
         # Build /DR (default resources) : a /Font sub-dict that maps
         # the name used in /DA (here `/Helv`) to a font reference.
         font_dict = Objects::Dictionary.new
-        font_dict["Helv"] = helv_obj.reference
+        font_dict["Helv"] = helv_ref
 
         dr = Objects::Dictionary.new
         dr["Font"] = font_dict
@@ -267,6 +292,16 @@ module PDF
         acroform["NeedAppearances"] = Objects::Boolean.new(true)
         acroform["DA"] = Objects::Str.new(@default_appearance)
         acroform["DR"] = dr
+
+        # /SigFlags : declare that the form contains signatures and
+        # restrict viewer-side modifications to incremental updates
+        # only. PDF spec § 12.7.2 table 218 :
+        #   bit 1 (SignaturesExist) = 1
+        #   bit 2 (AppendOnly)      = 2
+        # Set whenever at least one SignatureField is present.
+        if @fields.any?(SignatureField)
+          acroform["SigFlags"] = Objects::Number.new(3)
+        end
 
         acroform_obj = @document.register_object(acroform)
         acroform_obj.reference

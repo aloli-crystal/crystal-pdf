@@ -110,6 +110,71 @@ module PDF
         if dv = @default_value
           d["DV"] = Objects::Str.unicode(dv)
         end
+
+        # /AP /N normal appearance — the frame and dropdown arrow.
+        # The current value is *not* drawn here ; viewers regenerate
+        # that part on top via /NeedAppearances. Drawing the arrow
+        # in our own appearance makes the field visually identifiable
+        # as a dropdown even on viewers that fail to regenerate
+        # appearances reliably.
+        ap_ref = page.document.register_object(build_appearance)
+        ap_n = Objects::Dictionary.new
+        ap_n["N"] = ap_ref.reference
+        d["AP"] = ap_n
+      end
+
+      private def build_appearance : Objects::Stream
+        w = (@rect[2] - @rect[0]).to_f
+        h = (@rect[3] - @rect[1]).to_f
+        stream = Objects::Stream.new
+        stream["Type"] = Objects::Name.new("XObject")
+        stream["Subtype"] = Objects::Name.new("Form")
+        stream["FormType"] = Objects::Number.new(1)
+
+        bbox = Objects::Array.new
+        bbox << Objects::Number.new(0)
+        bbox << Objects::Number.new(0)
+        bbox << Objects::Number.new(w)
+        bbox << Objects::Number.new(h)
+        stream["BBox"] = bbox
+
+        resources = Objects::Dictionary.new
+        procset = Objects::Array.new
+        procset << Objects::Name.new("PDF")
+        resources["ProcSet"] = procset
+        stream["Resources"] = resources
+
+        # Arrow geometry — small downward triangle in the right
+        # ~12 % of the field, vertically centred.
+        arrow_w = h * 0.4
+        arrow_h = h * 0.25
+        arrow_left = w - arrow_w - 4.0
+        arrow_top = (h + arrow_h) / 2
+        arrow_bottom = (h - arrow_h) / 2
+
+        io = IO::Memory.new
+        io << "q\n"
+        io << "0 0 0 RG\n"
+        io << "0.5 w\n"
+        # Frame around the whole field.
+        io << "0.5 0.5 " << format_num(w - 1.0) << " " << format_num(h - 1.0) << " re\n"
+        io << "S\n"
+        # Filled triangle pointing down.
+        io << "0 0 0 rg\n"
+        io << format_num(arrow_left) << " " << format_num(arrow_top) << " m\n"
+        io << format_num(arrow_left + arrow_w) << " " << format_num(arrow_top) << " l\n"
+        io << format_num(arrow_left + arrow_w / 2) << " " << format_num(arrow_bottom) << " l\n"
+        io << "h\nf\n"
+        io << "Q\n"
+
+        stream.data = io.to_s
+        stream
+      end
+
+      private def format_num(n : Float64) : String
+        s = n.round(4).to_s
+        s = s.rstrip('0').rstrip('.') if s.includes?('.')
+        s.empty? ? "0" : s
       end
     end
   end
