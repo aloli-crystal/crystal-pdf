@@ -1,0 +1,46 @@
+= ICC color profiles — attributions et licences
+:icons: font
+
+This directory ships two ICC color profiles bundled inside the
+`aloli-crystal/pdf` shard. They are required to declare a valid
+`OutputIntent` in produced PDF documents (a prerequisite for
+PDF/A-2b and PDF/A-3 conformance — see `doc/RATIONALE.adoc`).
+
+== sRGB_v4_ICC_preference.icc
+
+* **Profile** : sRGB v4 ICC preference (perceptual intent)
+* **Source** : International Color Consortium —
+  https://registry.color.org/rgb-registry/srgbprofiles
+* **License** : public-domain-equivalent. Per the ICC sRGB v4 web
+  page : *"The profiles are made available without restrictions on
+  use, distribution, or modification."*
+* **Recommended usage** : default output intent for any RGB workflow,
+  including PDF/A-2b documents whose pages contain RGB content.
+
+== ISOcoated_v2_eci.icc  (FOGRA39)
+
+* **Profile** : ISO coated v2 (ECI) — based on characterization data
+  FOGRA39 (ISO 12647-2:2004 / Amd 1)
+* **Source** : European Color Initiative (ECI) —
+  https://eci.org/en/downloads (file `eci_offset_2009.zip`)
+* **License** : free for use and redistribution. ECI download terms :
+  *"The profiles may be downloaded, copied and used free of charge."*
+  Attribution to ECI is required when redistributing them, which is
+  the purpose of this file.
+* **Recommended usage** : default output intent for any CMYK workflow
+  targeting European offset printing or PDF/A-2b documents that
+  embed CMYK content.
+
+== Why these are embedded in the shard
+
+`aloli-crystal/pdf` ships these two profiles directly inside its
+source tree so that an application using the shard can declare a
+conforming `OutputIntent` without any external file, download or
+configuration step. This is convenient for the typical ALOLI use
+case (ISO 27001 audit reports, electronic invoices), where the
+generated PDF must be self-contained.
+
+If you need a different ICC profile (Adobe RGB, P3, US Web Coated
+SWOP, custom calibration), pass its byte content to
+`PDF::ColorSpaces::ICCBased.new(...)` instead of relying on the
+factory methods `srgb_v4` / `fogra39`.

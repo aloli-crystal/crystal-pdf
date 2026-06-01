@@ -71,6 +71,11 @@ module PDF
     # Interactive form (AcroForm). Nil until `#acroform` is called.
     @acroform : AcroForm::Form?
 
+    # Output intent — declares the colour reproduction characteristics
+    # the document was targeted at. Required for PDF/A conformance.
+    # Set via `Document#output_intent=`.
+    property output_intent : OutputIntent? = nil
+
     # AcroForm's catalog reference, computed by `finalize!` *before*
     # pages are finalized so that widget annotations are attached
     # to the right pages' /Annots arrays.
@@ -533,6 +538,19 @@ module PDF
       # Add /AcroForm if it was pre-finalized in `#finalize!`.
       if ref = @acroform_ref
         dict["AcroForm"] = ref
+      end
+
+      # Add /OutputIntents if an output intent was set. PDF allows
+      # several intents per document, but ALOLI ships one at a time
+      # in this MVP.
+      if oi = @output_intent
+        profile_stream = oi.dest_output_profile.to_stream
+        profile_obj = register_object(profile_stream)
+        intent_dict = oi.to_dictionary(profile_obj.reference)
+        intent_obj = register_object(intent_dict)
+        intents = Objects::Array.new
+        intents << intent_obj.reference
+        dict["OutputIntents"] = intents
       end
 
       # Add XMP metadata

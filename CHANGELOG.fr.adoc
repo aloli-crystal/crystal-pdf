@@ -7,6 +7,49 @@ Toutes les évolutions notables de pdf sont consignées ici. Le
 format suit https://keepachangelog.com/fr/1.1.0/[Keep a Changelog] et
 le versionnage respecte https://semver.org/lang/fr/[SemVer].
 
+== v0.5.8 — 2026-06-01
+
+=== Ajouté
+
+* **OutputIntent + espace de couleurs ICCBased (première étape de J1
+  dans la trajectoire ISO PDF).** Nouveau module `PDF::OutputIntent`
+  qui permet à un document de déclarer une condition de sortie
+  calibrée — prérequis pour la conformance PDF/A-2b / PDF/A-3.
++
+[source,crystal]
+----
+pdf.output_intent = PDF::OutputIntent.srgb     # RGB par défaut
+pdf.output_intent = PDF::OutputIntent.fogra39  # CMYK offset européen
+----
++
+Les intents par défaut référencent deux profils ICC embarqués dans
+`src/pdf/data/icc/` :
++
+--
+** **sRGB v4 ICC preference** (60 Ko) — domaine public, depuis le
+   registre de l'International Color Consortium.
+** **Coated FOGRA39 / ISOcoated_v2_eci** (1,7 Mo) — libre d'usage
+   selon les conditions ECI ; attribution conservée dans
+   `src/pdf/data/icc/LICENSE.adoc`.
+--
+
+* **`PDF::ColorSpaces::ICCBased`** — première entrée concrète du
+  namespace `ColorSpaces`. Détecte automatiquement le nombre de
+  composantes (1 Gray, 3 RGB, 4 CMYK) depuis l'en-tête ICC. Factories
+  `.srgb_v4`, `.fogra39`, `.from_file(path)`.
+
+=== Modifié
+
+* `PDF::Document#output_intent=` est le setter public. Lorsqu'il est
+  défini, `Document#finalize!` écrit `/OutputIntents [...]` dans le
+  catalog, ainsi qu'un dict `OutputIntent` indirect dont le
+  `/DestOutputProfile` pointe sur un stream comprimé Flate portant
+  les octets ICC.
+* Le poids du shard augmente d'environ 1,8 Mo pour inclure les deux
+  profils ICC. C'est le compromis assumé dans `doc/RATIONALE.adoc`
+  (point ouvert n°1, tranché le 2026-06-01) afin de garder les PDF
+  générés self-contained sans accès à un fichier externe au runtime.
+
 == v0.5.7 — 2026-06-01
 
 === Ajouté
