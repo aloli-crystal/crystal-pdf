@@ -7,6 +7,73 @@ Toutes les évolutions notables de pdf sont consignées ici. Le
 format suit https://keepachangelog.com/fr/1.1.0/[Keep a Changelog] et
 le versionnage respecte https://semver.org/lang/fr/[SemVer].
 
+== v0.5.7 — 2026-06-01
+
+=== Ajouté
+
+* **Support AcroForm interactif (J0 de la trajectoire ISO PDF).**
+  Nouveau module `PDF::AcroForm` qui produit des formulaires
+  remplissables dans Acrobat Reader, Preview macOS, Firefox PDF.js et
+  Chrome. Cinq types de champs dans cette première itération :
++
+--
+** **Texte** (`/FT /Tx`) — simple ligne et multi-ligne, avec
+   `MaxLen`, `Password`, `Multiline`, alignement, valeur par défaut.
+** **Case à cocher** (`/FT /Btn` sans flag `Pushbutton`/`Radio`) —
+   états `/Yes`/`/Off`, avec état par défaut.
+** **Boutons radio** (`/FT /Btn` avec flag `Radio`) — les kids
+   partagent `/Parent` et portent chacun un `/AP /N` avec deux Form
+   XObjects natifs (anneau vide pour `Off`, anneau + point central
+   plein pour la valeur sélectionnée) qui rendent les boutons
+   visibles dans tous les visualiseurs. Sans `/AP`, Acrobat et
+   Preview n'affichent rien pour les kids ; sans `/Parent`, ils
+   ignorent les kids entièrement.
+** **Liste déroulante / combo** (`/FT /Ch` avec flag `Combo`) — accepte
+   soit `Array(String)` (valeur = libellé) soit `Hash(String, String)`
+   (valeur d'export ⇒ libellé affiché), conformément à PDF spec
+   § 12.7.4.4.
+** **Listbox** (`/FT /Ch` sans flag `Combo`) — choix multi-ligne sans
+   menu déroulant.
+--
++
+DSL :
++
+[source,crystal]
+----
+pdf.acroform do |form|
+  form.text_field("nom", page: page, x: 100, y: 700, width: 200, height: 20)
+  form.radio_group("genre", page: page, options: ["M", "F"], x: 100, y: 600)
+  form.dropdown("pays", page: page, options: {"FR" => "France"}, x: 100, y: 550, width: 120, height: 20)
+end
+----
++
+Le MVP s'appuie sur `/NeedAppearances true` pour les appearance
+streams des champs texte / case / dropdown (le visualiseur les
+régénère au remplissage). Les appearance streams custom de tous
+les types arriveront en J1.
+
+* **`doc/RATIONALE.adoc`** — document fondateur substantif de la
+  trajectoire ISO PDF de ce shard sur 18-24 mois : ambition
+  pragmatique (ISO 32000-1 + PDF/A-2b/3b + PDF/UA-1 + extensions
+  crypto PDF 2.0), éclatement futur en quatre shards (`pdf`, `pdf-a`,
+  `pdf-ua`, `pdf-validate`), cinq jalons (J1-J5), validateur déclaratif
+  inspiré veraPDF. Hors scope assumé : PDF/X, PDF/E, PDF/VT.
+
+* **`examples/acroform.cr`** — démo end-to-end qui exerce tous les
+  types de champs. Génère `acroform_demo.pdf` (~8 Ko), prêt à ouvrir
+  et remplir dans n'importe lequel des quatre visualiseurs majeurs.
+
+=== Modifié
+
+* `PDF::Document` expose `#acroform(&)` et `#acroform?`.
+* `PDF::Page` expose `#add_annotation_ref` pour qu'AcroForm puisse
+  attacher des références d'annotations widget pré-enregistrées à
+  `/Annots` sans les ré-enregistrer.
+* `Document#finalize!` finalise désormais l'AcroForm *avant* les
+  pages, pour que les références widget atterrissent dans les bons
+  tableaux `/Annots`. Sans cet ordre, les widgets existent comme
+  objets indirects mais ne sont jamais reliés à une page.
+
 == v0.5.6 — 2026-06-01
 
 === Corrigé

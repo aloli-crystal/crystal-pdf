@@ -1,0 +1,766 @@
+= Conformité ISO PDF — Trajectoire ALOLI pour aloli-crystal/pdf
+:toc: left
+:toclevels: 3
+:sectnums:
+:icons: font
+:source-highlighter: rouge
+:date: 2026-05-28
+
+[abstract]
+Document fondateur acté le 2026-05-28. Cadre la transformation du
+shard `aloli-crystal/pdf` (actuellement 0.5.5, dérivé Prawn/watzon-pdf.cr)
+en suite ALOLI de génération **et** validation conforme à la famille
+de normes ISO PDF. Sert de référence pour les arbitrages de scope,
+de versionnement et d'architecture sur les 18 à 24 prochains mois.
+
+== Pourquoi ce document existe
+
+Le shard `pdf` produit aujourd'hui des PDF structurellement valides
+(catalog, page tree, content streams, fonts, images, chiffrement
+AES-256), mais il n'est **conforme à aucun profil ISO formel**. Pour
+une suite logicielle ALOLI qui prétend supporter le pilotage ISO 27001
+— archivage long terme, intégrité, accessibilité, signatures — cette
+absence de conformance certifiable est un trou stratégique.
+
+Trois questions étaient sur la table avant cette décision :
+
+. Faut-il viser la conformance à *toute* la famille ISO PDF, ou
+  délimiter un sous-ensemble ALOLI ?
+. Le shard doit-il rester un *générateur* pur, ou aussi un
+  *validateur* (équivalent veraPDF en Crystal) ?
+. Garde-t-on un shard monolithique, ou éclate-t-on par profil ?
+
+Les sections qui suivent acten les réponses et tracent la trajectoire.
+Quand ce dossier sera relu dans 6, 12 ou 24 mois pour décider de
+l'étape suivante, il doit suffire à se réorienter sans devoir
+re-déterrer l'historique des échanges.
+
+== La famille ISO PDF — clarification
+
+« Le PDF » n'est pas une norme unique mais une **famille de normes
+ISO** dont la racine est ISO 32000. Chaque profil dérivé ajoute des
+contraintes — il *n'autorise* jamais ce que la racine interdit, il
+*restreint* en revanche pour servir un usage précis.
+
+[cols="2,3,3,2",options="header"]
+|===
+| Norme
+| Objet
+| Usage
+| Scope ALOLI
+
+| **ISO 32000-1** (2008)
+| PDF 1.7
+| Base structurelle universelle
+| **Fondation — à compléter**
+
+| **ISO 32000-2** (2020)
+| PDF 2.0
+| Version actuelle
+| Cible après 32000-1
+
+| **ISO 19005-1** (PDF/A-1)
+| Archivage 1.4
+| Documents simples, sans transparence
+| Hors scope (obsolète)
+
+| **ISO 19005-2** (PDF/A-2)
+| Archivage 1.7
+| Archivage long terme moderne
+| **Cible : A-2b**
+
+| **ISO 19005-3** (PDF/A-3)
+| Archivage 1.7 + embedded files
+| Archivage + pièces jointes (factures électroniques, ZUGFeRD/Factur-X)
+| **Cible : A-3b**
+
+| **ISO 19005-4** (PDF/A-4)
+| Archivage 2.0
+| Successeur basé sur PDF 2.0
+| Après PDF 2.0
+
+| **ISO 14289-1** (PDF/UA-1)
+| Accessibilité
+| Sections d'accessibilité (RGAA, EAA, WCAG)
+| **Cible**
+
+| **ISO 14289-2** (PDF/UA-2)
+| Accessibilité PDF 2.0
+| Successeur basé sur PDF 2.0
+| Après PDF 2.0
+
+| ISO 15930 (PDF/X)
+| Pré-presse
+| Imprimeurs
+| Hors scope assumé
+
+| ISO 24517 (PDF/E)
+| Engineering 3D
+| CAO, BIM
+| Hors scope assumé
+
+| ISO 16612 (PDF/VT)
+| Transactionnel variable
+| Documents personnalisés massifs
+| Hors scope assumé
+
+| ISO 32001 / 32002 / 32003 / 32004
+| Extensions PDF 2.0
+| Crypto post-quantique, signatures, AES-GCM
+| **Convergence avec pdf-signature**
+|===
+
+[IMPORTANT]
+====
+Un PDF/A-2b est *aussi* un PDF 1.7. Un PDF/UA-1 est *aussi* un PDF
+1.7 (et peut, en plus, être un PDF/A-2). Les profils s'empilent. Une
+implémentation qui supporte PDF/A-2b + PDF/UA-1 produit donc un PDF
+qui sert à la fois l'archivage et l'accessibilité — le scénario
+ALOLI typique.
+====
+
+== État de l'art : pdf 0.5.5 vs ISO
+
+Audit réalisé le 2026-05-28 sur l'arborescence `src/pdf/` du shard,
+versus les exigences ISO 32000-1, ISO 19005-2 (PDF/A-2b) et ISO 14289-1
+(PDF/UA-1).
+
+=== Ce qui est solide
+
+Le shard couvre déjà sérieusement le noyau ISO 32000-1. Ces éléments
+peuvent être étiquetés *conformes* (avec, le cas échéant, ajout de
+tests de conformance pour le certifier) :
+
+* **Chiffrement standard** : handlers V1/V2 (RC4 40/128), V4/R4
+  (AES-128 + CryptFilter), V5/R6 (AES-256). Dérivation de clé
+  par objet. Support `/EncryptMetadata` (prérequis PDF/A-3).
+* **Infrastructure objet** : indirect objects, dictionaries, streams,
+  cross-reference table classique, trailer, `/ID` array.
+* **Polices** : Type1, TrueType Type0 composite avec subsetting,
+  Identity-H + CMap ToUnicode (extraction texte fiable pour TrueType).
+* **Metadata XMP** : flux XMP complet (Dublin Core + propriétés XMP
+  standard), dates ISO 8601, padding XMP. Coexiste avec le `/Info`
+  dictionary traditionnel.
+* **Graphics avancés** : ExtGState (opacité `ca`/`CA`, 15 blend modes),
+  patterns et shadings (Type 2 functions, gradients axial/radial),
+  line properties complètes.
+* **Annotations basiques** : liens URI, destinations internes, outline
+  (bookmarks).
+* **Filtres** : FlateDecode (compression), DCTDecode (JPEG passthrough).
+
+=== Trous structurels ISO 32000-1
+
+Ces manques ne bloquent pas la production de PDF lisibles, mais ils
+limitent les optimisations attendues d'une bibliothèque moderne et,
+pour certains, ferment l'accès aux profils dérivés.
+
+[cols="2,3,2",options="header"]
+|===
+| Manque | Conséquence | Bloque
+
+| **Cross-reference streams** (`/Type /XRef`)
+| Pas de compression de l'index objets. Fichiers volumineux plus gros que nécessaire.
+| Pas de blocage profil. Bloque la linéarisation.
+
+| **Object streams** (`/Type /ObjStm`)
+| Pas de compression d'objets. Mentionné en commentaire dans `parser.cr`.
+| Bloque linéarisation (Fast Web View), bloque PDF 2.0 idiomatique.
+
+| **AcroForm**
+| Pas de `/AcroForm` dans le catalog. Aucun champ de formulaire interactif. Pas de `/SigFlags`.
+| Bloque signatures visibles côté `pdf-signature`. Bloque PDF/UA pour les formulaires accessibles.
+
+| **Embedded files** (`/EmbeddedFile` + `/FileSpec`)
+| Impossible d'attacher des fichiers (XML, ZIP, source data) à un PDF.
+| **Bloque PDF/A-3** intégralement.
+
+| **Optional Content Groups** (calques)
+| Pas de `/OCProperties` / `/OCGs`. Pas de visibilité contrôlable.
+| Pas de blocage profil. Confort utilisateur.
+
+| **Color spaces avancés**
+| Pas d'`ICCBased`, pas de `Separation` (spot colors), pas de `DeviceN` (multi-channel).
+| **Bloque PDF/A-2b** dès qu'on utilise autre que DeviceGray pur.
+
+| **Auto-déclaration de version**
+| Blend modes utilisés sans forcer le header à PDF 1.4+.
+| Mismatch version possible.
+|===
+
+=== Trous bloquants PDF/A-2b
+
+ISO 19005-2 ajoute, par rapport à 32000-1, une douzaine d'exigences
+positives (obligations) et une vingtaine d'interdictions. Les blocages
+spécifiques au shard sont :
+
+1. **OutputIntent absent** — Pas de `/OutputIntents` dans le catalog,
+   pas de profil ICC embarqué. *Tous* les validateurs PDF/A rejettent
+   un document sans OutputIntent. C'est le premier blocage à lever.
+
+2. **Tagged PDF absent** — Pas de `/StructTreeRoot`, pas de `/MarkInfo`
+   avec `/Marked true`. PDF/A-2b *recommande* (n'oblige pas) le tagging,
+   mais l'absence de structure logique exclut tout usage A-2u (Unicode
+   mapping certifié) et bloque PDF/UA.
+
+3. **Subsetting Type1 non obligatoire** — Le subsetting TrueType est
+   implémenté ; pour Type1, il est optionnel. PDF/A exige que toute
+   police soit embarquée, complète **ou** subsettée. Type1 non-subsetté
+   sans embarquement = violation.
+
+4. **Color management partiel** — Dès qu'on utilise du DeviceRGB
+   ou DeviceCMYK, PDF/A-2b exige un `/DefaultRGB` ou `/DefaultCMYK`
+   ICCBased côté ressources, ou un OutputIntent qui couvre l'espace.
+   Le shard ne sait pas créer d'ICCBased.
+
+5. **Transparency déclaration** — L'usage de blend modes / soft masks
+   requiert un header PDF ≥ 1.4 et certaines règles A-2b sur les
+   groupes de transparence isolés. Aujourd'hui non garanti.
+
+=== Trous bloquants PDF/UA-1
+
+ISO 14289-1 est plus strict que PDF/A sur la structure logique. Le
+shard a quatre blocages majeurs :
+
+1. **Structure tree complet** — `/StructTreeRoot` avec hiérarchie
+   sémantique (`<Document>`, `<Sect>`, `<P>`, `<H1>`...`<H6>`,
+   `<Figure>`, `<Table>` etc.). *Critique*.
+
+2. **Métadonnées catalog** — `/Lang` (langue principale du document),
+   `/MarkInfo /Marked true`, `/ViewerPreferences /DisplayDocTitle true`.
+
+3. **Texte alternatif** — `/Alt` sur les figures, `/ActualText` sur
+   les artefacts de texte (lettrines, glyphes décoratifs).
+
+4. **Formulaires accessibles** — AcroForm avec `/TU` (tooltips) et
+   tabbing order défini. Recoupe le trou AcroForm cité plus haut.
+
+=== Synthèse de l'audit
+
+Le shard a un *bon noyau ISO 32000-1* (sécurité, polices, graphics,
+XMP) mais un *plafond* clair côté profils dérivés. Les chantiers à
+plus fort rendement sont, dans l'ordre :
+
+. **OutputIntent + ICCBased** (J1) — débloque toute la chaîne PDF/A.
+. **Tagged PDF + structure tree** (J2) — prérequis commun PDF/A et
+  PDF/UA, le plus gros chantier du programme.
+. **AcroForm + EmbeddedFile** (J1 et J3) — débloque signatures
+  visibles, PDF/A-3 et accessibilité des formulaires.
+. **XRef streams + Object streams** (J1) — modernisation ISO 32000-1.
+
+== Architecture cible : éclatement par profil
+
+Décision actée 2026-05-28 : *éclatement en sous-shards par profil
+ISO*, cohérent avec [feedback_shard_naming.md] (créations sans
+préfixe sous `aloli-crystal/<nom>`) et avec la séparation déjà
+en place pour `pdf-signature` et `crystal-combine-pdf`.
+
+[cols="2,3,2,2",options="header"]
+|===
+| Shard | Rôle | Norme principale | Version cible
+
+| `aloli-crystal/pdf`
+| Noyau de génération + lecture. Implémente ISO 32000-1 puis 32000-2.
+| ISO 32000-1, ISO 32000-2
+| 0.x jusqu'au validateur
+
+| `aloli-crystal/pdf-a`
+| Profil archivage. Surcouche au-dessus de `pdf` qui force les contraintes A-2b puis A-3b. API : `Pdf::A::Document.new(profile: :a_2b)`.
+| ISO 19005-2, ISO 19005-3
+| 0.1.0 au démarrage
+
+| `aloli-crystal/pdf-ua`
+| Profil accessibilité. Surcouche qui impose tagging, `/Lang`, alt-texts. Composable avec `pdf-a`.
+| ISO 14289-1
+| 0.1.0 au démarrage
+
+| `aloli-crystal/pdf-validate`
+| Validateur déclaratif. Moteur générique + jeux de règles YAML par profil. Équivalent veraPDF en Crystal, périmètre restreint aux profils ALOLI.
+| Transverse
+| 0.1.0 au démarrage
+|===
+
+Versionnement : `pdf` reste en `0.x` *tant que `pdf-validate` n'est
+pas opérationnel* (décision actée). Le passage à `1.0.0` symbolisera
+la possibilité de *certifier* la conformance d'un document produit,
+pas simplement de l'affirmer.
+
+[NOTE]
+====
+La règle de numérotation 3 chiffres (SemVer création) vs 4 chiffres
+(portage calé sur amont) ne s'applique pas ici : ces shards sont
+des *créations* ALOLI (pas des portages stricts). Trois chiffres,
+SemVer indépendant. Cf. [feedback_versioning_shards.md].
+====
+
+=== Dépendances inter-shards
+
+----
+                    ┌──────────────────────────┐
+                    │   aloli-crystal/pdf      │
+                    │   (ISO 32000-1, -2)      │
+                    └──┬──────────────────┬────┘
+                       │                  │
+              ┌────────┴───────┐  ┌──────┴────────┐
+              │  pdf-a         │  │  pdf-ua       │
+              │ (PDF/A-2b/3b)  │  │  (PDF/UA-1)   │
+              └────────────────┘  └───────────────┘
+                       │                  │
+                       └────────┬─────────┘
+                                │
+                       ┌────────┴──────────────┐
+                       │  pdf-validate         │
+                       │  (règles YAML)        │
+                       └───────────────────────┘
+----
+
+Toutes les surcouches dépendent de `pdf`. `pdf-validate` dépend des
+trois autres pour réutiliser leurs structures de profil, mais sa
+logique de validation reste indépendante (un PDF tiers peut être
+validé sans avoir été généré par `pdf-a`/`pdf-ua`).
+
+== Trajectoire : un sprint court + cinq jalons sur 18 à 24 mois
+
+Un sprint court J0 (2 à 3 semaines) précède cinq jalons (J1 à J5) de
+3 à 5 mois chacun. J0 sort de la trajectoire ISO stricte pour livrer
+un besoin métier immédiat (formulaires interactifs). Les jalons J1-J5
+peuvent se chevaucher partiellement, mais J3 dépend strictement de
+J1+J2, et J4 dépend de J2.
+
+=== J0 — AcroForm interactif (2 à 3 semaines)
+
+Objectif : besoin métier ALOLI immédiat — pouvoir produire des PDF
+*remplissables* dans Acrobat, Preview, Firefox PDF.js. Sort de la
+trajectoire ISO stricte mais débloque un usage concret avant la fin
+de J1.
+
+Livrables :
+
+* **Structure `/AcroForm`** dans le catalog avec :
+** `/Fields` array (références aux champs du document)
+** `/NeedAppearances true` — astuce clé MVP : le visualiseur régénère
+   les appearance streams à chaque saisie, on n'a pas besoin de les
+   écrire à la main
+** `/DA` default appearance (police/taille/couleur par défaut)
+** `/DR` default resources (au moins Helvetica embarquée)
+* **Champ texte** (`/FT /Tx`) — simple ligne et multi-ligne, avec
+  drapeaux `Multiline`, `Password`, `FileSelect` optionnels
+* **Case à cocher** (`/FT /Btn` sans flags `Pushbutton`/`Radio`) —
+  états `/Yes` et `/Off`
+* **Bouton radio groupé** (`/FT /Btn` avec flag `Radio=1`) — kids
+  partageant la même valeur de champ
+* **Liste déroulante** (`/FT /Ch` avec flag `Combo=1`) — `/Opt`
+  array
+* **API DSL Crystal** :
++
+[source,crystal]
+----
+doc.acroform do |form|
+  form.text_field("nom", x: 100, y: 700, width: 200, height: 20)
+  form.checkbox("rgpd_consent", x: 100, y: 650)
+  form.radio_group("genre", ["M", "F", "Autre"], x: 100, y: 600)
+  form.dropdown("pays", ["FR", "BE", "CH"], x: 100, y: 550, default: "FR")
+end
+----
+* **Drapeaux essentiels** par champ : `Required`, `ReadOnly`, `NoExport`.
+
+Hors scope J0 (reporté à J1 ou plus tard) :
+
+* Appearance streams custom (stylage visuel précis)
+* Champ signature `/Sig` (livré en J1, couplé à `pdf-signature`)
+* Calculs / actions / JavaScript (jamais — interdit en PDF/A)
+* Export/import FDF / XFDF
+* Tabbing order explicite (ordre par défaut = ordre de déclaration)
+* Sous-formulaires hiérarchiques
+
+Critère de sortie : un PDF généré avec les 4 types de champs s'ouvre
+dans Acrobat Reader et Preview macOS, l'utilisateur peut remplir,
+sauvegarder, rouvrir, et les valeurs sont préservées.
+
+Cible version `pdf` : `0.5.6`.
+
+[NOTE]
+====
+J0 est délibérément un *MVP* avec coupures assumées (`/NeedAppearances`
+plutôt qu'appearance streams écrits). Quand J1 ajoutera les
+appearance streams custom, le code J0 sera étendu, pas refait.
+====
+
+=== J1 et suivants — Trajectoire ISO
+
+Cinq jalons (J1 à J5), chacun de l'ordre de 3 à 5 mois.
+
+=== J1 — Compléter ISO 32000-1 (3 à 4 mois)
+
+Objectif : combler les trous structurels du noyau qui débloquent les
+profils dérivés.
+
+[NOTE]
+====
+Le shard 0.5.5 rejette désormais les fontes OpenType/CFF (`.otf`) au
+chargement avec un message actionable (`UnsupportedFontFormat`),
+plutôt que de laisser planter le subsetter sur « Missing required
+table: glyf ». **Support CFF natif** = livrable J1 (impacte Noto
+Sans CJK qui ne se distribue qu'en `.otf` ou `.ttc`).
+====
+
+Livrables :
+
+* **OutputIntent + ICCBased** : capacité à embarquer un profil ICC
+  (sRGB v4 par défaut, FOGRA39 pour CMYK) et à déclarer un
+  `/OutputIntents` dans le catalog. API : `doc.output_intent = Pdf::OutputIntent.srgb`.
+* **AcroForm complet** : ajoute au MVP J0 le champ signature
+  (`/FT /Sig` + `/SigFlags`), les appearance streams custom (stylage
+  visuel précis), les drapeaux étendus (formats de saisie, masques).
+  Couple avec `pdf-signature` pour les signatures visibles.
+* **Embedded files** : `/EmbeddedFile` stream + `/FileSpec` dict +
+  `/AF` array dans la page. Débloque PDF/A-3 et les usages
+  Factur-X / ZUGFeRD côté ALOLI.
+* **Cross-reference streams** : option de génération (`/Type /XRef`)
+  alternative à la table classique. Sortie sélectionnable par
+  `doc.xref_format = :stream`.
+* **Object streams** (`/Type /ObjStm`) : compression d'objets,
+  prérequis linéarisation future.
+* **Color spaces avancés** : `ICCBased`, `Separation`, `DeviceN`
+  comme types de premier ordre.
+* **Support CFF natif** : parser CFF/CFF2, embedding `/FontFile3`
+  avec subtype `OpenType`/`CIDFontType0C`, subsetting CFF. Débloque
+  Noto Sans CJK et toute la famille OpenType. Aujourd'hui rejet
+  explicite au chargement, à remplacer par support complet.
+
+Critère de sortie : un document complexe (formulaire + pièce jointe
++ image CMYK avec profil ICC) se génère et passe la validation
+syntaxique de qpdf et Adobe Preflight (validation manuelle ; le
+validateur ALOLI viendra en J5).
+
+Cible version `pdf` : `0.6.0`.
+
+=== J2 — Tagged PDF + structure tree (4 à 5 mois)
+
+Objectif : implémenter la *structure logique* d'un PDF, prérequis
+commun PDF/A-2u, PDF/A-3, PDF/UA-1, PDF/UA-2.
+
+Livrables :
+
+* **API de tagging** : DSL pour annoter le contenu généré avec son
+  rôle sémantique. Exemple :
++
+[source,crystal]
+----
+doc.tag(:h1) { doc.text "Titre principal" }
+doc.tag(:p) { doc.text "Paragraphe..." }
+doc.tag(:figure, alt: "Logo ALOLI") { doc.image "logo.png" }
+----
+* **StructTreeRoot** : génération du `/StructTreeRoot` complet,
+  avec `/K` children, `/ParentTree`, `/RoleMap`, `/ClassMap`.
+* **MCID / BDC-EMC** : insertion des opérateurs marqueurs dans le
+  content stream pour relier le contenu graphique à la structure
+  logique.
+* **Pdf::Tag enum** : tous les rôles standard PDF/UA (Document,
+  Sect, Part, Art, Div, BlockQuote, Caption, TOC, TOCI, Index,
+  NonStruct, Private, P, H1-H6, Figure, Formula, Form, Table,
+  TR, TH, TD, etc.).
+* **Texte alternatif** : `/Alt`, `/ActualText`, `/E` (expansion
+  des abréviations), `/Lang` par sous-arbre.
+
+Critère de sortie : un document généré avec l'API de tagging passe
+la validation structurelle de pac2024 (PDF Accessibility Checker).
+
+Cible version `pdf` : `0.7.0`.
+
+[NOTE]
+====
+J2 est le jalon le plus risqué du programme. Le tagging modifie
+profondément la séparation entre génération de contenu et structure
+logique. Les API publiques doivent être conçues avec le shard
+`crystal-asciidoctor-pdf` en tête : c'est lui qui devra émettre
+les bons tags depuis l'arbre AsciiDoc. Faire un POC sur 3 documents
+AsciiDoc réels avant de geler l'API.
+====
+
+=== J3 — Profil PDF/A (3 à 4 mois)
+
+Objectif : créer le shard `aloli-crystal/pdf-a` qui surcouche `pdf`
+en forçant les contraintes A-2b puis A-3b.
+
+Livrables :
+
+* **API `Pdf::A::Document`** : constructeur avec profile cible.
+  Lève des exceptions Crystal *au moment de la génération* si une
+  contrainte est violée (police non-embarquée, JavaScript présent,
+  blend mode non-isolé, etc.).
+* **Mode strict / permissif** : option pour échouer à la première
+  violation (`strict: true`) ou accumuler les violations et les
+  retourner (`strict: false`).
+* **Profil A-2b** d'abord, **A-3b** ensuite (la seule différence
+  notable : A-3b autorise les `/EmbeddedFile`, prérequis Factur-X).
+* **Documentation de migration** : guide pour transformer un appel
+  `Pdf::Document.new` en `Pdf::A::Document.new` et localiser les
+  ajustements nécessaires.
+
+Critère de sortie : un PDF A-2b généré passe la validation veraPDF
+(externe, en attendant `pdf-validate`). Trois cas réels : facture
+ALOLI, rapport d'audit ISO 27001, document signé.
+
+Cible version `pdf-a` : `0.1.0` à `0.3.0` sur le jalon.
+
+=== J4 — Profil PDF/UA (3 à 4 mois)
+
+Objectif : créer le shard `aloli-crystal/pdf-ua` qui surcouche `pdf`
+en forçant les contraintes ISO 14289-1.
+
+Livrables :
+
+* **API `Pdf::UA::Document`** : analogue à `Pdf::A::Document`. Force
+  l'usage de l'API de tagging (J2), refuse la génération si un
+  fragment de contenu n'est pas tagué.
+* **Validations contextuelles** : titres dans l'ordre H1→H6,
+  alt-text obligatoire sur les figures, tables avec headers, etc.
+* **Composabilité avec `pdf-a`** : `Pdf::UA::Document.new(also_a: :a_2b)`
+  produit un PDF qui satisfait les deux profils simultanément.
+
+Critère de sortie : validation pac2024 propre sur 3 documents réels.
+
+Cible version `pdf-ua` : `0.1.0` à `0.3.0` sur le jalon.
+
+=== J5 — Validateur `pdf-validate` (4 à 5 mois)
+
+Objectif : créer le shard `aloli-crystal/pdf-validate`, validateur
+déclaratif équivalent veraPDF restreint aux profils ALOLI.
+
+==== Architecture : moteur + règles déclaratives
+
+Le validateur est composé de deux couches :
+
+* **Un moteur générique** écrit en Crystal, qui sait :
+** Charger un PDF en lecture (réutilise `pdf/reader.cr`).
+** Évaluer une *règle déclarative* contre l'arbre objet.
+** Reporter les violations avec position (numéro d'objet, clause ISO).
+* **Des jeux de règles** au format YAML, un fichier par profil :
+  `rules/pdf-a-2b.yml`, `rules/pdf-a-3b.yml`, `rules/pdf-ua-1.yml`.
+
+==== Format d'une règle
+
+[source,yaml]
+----
+- id: pdfa2-6.6.3
+  profile: PDF/A-2b
+  iso_clause: "ISO 19005-2 § 6.6.3"
+  title: "Pas d'action JavaScript"
+  description: |
+    Un fichier conforme à PDF/A-2b ne doit contenir aucune
+    action JavaScript, sous aucune forme (catalog, page,
+    annotation, formulaire).
+  check: object_absent
+  targets:
+    - "/Catalog/Names/JavaScript"
+    - "/Catalog/AA"
+    - "/Page/AA"
+  severity: error
+----
+
+==== Vocabulaire des `check`
+
+Le moteur connaît un nombre fini de types de vérification, étendus
+au besoin :
+
+* `object_absent` / `object_present` — clé absente ou présente à un
+  chemin donné.
+* `value_in` / `value_not_in` — valeur dans un ensemble autorisé.
+* `value_matches` — valeur correspondant à une regex (codes
+  Unicode, formats de date, etc.).
+* `string_encoding` — chaîne dans un encoding donné (UTF-8, PDFDocEncoding).
+* `font_embedded` — police embarquée et subsettée correctement.
+* `colorspace_calibrated` — espace couleur avec gestion ICC.
+* `structure_role_valid` — rôle de structure dans le RoleMap autorisé.
+* `transparency_isolated` — groupe de transparence avec isolation.
+
+==== Traçabilité ISO
+
+Chaque règle pointe explicitement vers sa clause ISO. Un rapport
+de validation produit en sortie un document AsciiDoc / JSON qui
+liste *clause par clause* les conformités et les violations. Utile
+pour les audits ISO 27001 (preuve écrite de validation).
+
+==== Périmètre J5
+
+J5 livre une *première version utilisable* :
+
+* Moteur + ~10 types de `check`.
+* Règles PDF/A-2b (les ~150 règles principales).
+* Règles PDF/UA-1 (les ~60 règles principales).
+* CLI : `pdf-validate <file.pdf> --profile pdf-a-2b`.
+* Sortie : rapport AsciiDoc + JSON + code de retour shell.
+
+PDF/A-3b, PDF/A-4, PDF/UA-2 viennent ensuite par ajout de fichiers
+YAML, sans modification du moteur.
+
+==== Critère de sortie
+
+Sur un parc de PDFs de référence (à constituer : 30 documents
+PDF/A-2b « bons » + 30 « volontairement non conformes »),
+`pdf-validate` donne le même verdict que veraPDF dans au moins
+**95 %** des cas. Les divergences sont documentées (différence
+d'interprétation d'une clause ISO ou bug à corriger).
+
+Cible version `pdf-validate` : `0.1.0` au lancement, `0.5.0` à
+critère de sortie atteint.
+
+**Quand J5 atteint son critère de sortie, le shard `pdf` peut
+passer en `1.0.0`** — la conformance n'est plus seulement *visée*,
+elle est *certifiable*.
+
+== Convergences avec l'écosystème ALOLI
+
+Cette trajectoire ne se construit pas en silo. Elle ajuste
+plusieurs autres briques ALOLI :
+
+=== Avec aloli-crystal/pdf-signature
+
+`pdf-signature` a déjà besoin de `/AcroForm` + `/SigFlags`, livrés
+en J1. Inversement, **PDF/A-3** est la voie naturelle pour livrer
+des PDF signés avec pièce jointe (par exemple XML eIDAS ou facture
+électronique). Convergence forte en J3.
+
+Les extensions PDF 2.0 (ISO 32001-32004 : AES-GCM, post-quantique,
+ECDSA Brainpool, ISO/IEC 14888-3 EC-Schnorr) seront pour partie
+implémentées dans `pdf-signature` et pour partie dans `pdf` (côté
+crypto). Une note de coordination sera ajoutée au RATIONALE de
+`pdf-signature` (voir [reference_pdf_signing_principles.md]).
+
+=== Avec aloli-crystal/crystal-combine-pdf
+
+Quand on combine deux PDFs PDF/A-2b avec `crystal-combine-pdf`, le
+résultat doit *rester* PDF/A-2b. Cela implique :
+
+* Détecter les OutputIntent compatibles et choisir.
+* Fusionner les StructTreeRoot (chantier non-trivial).
+* Préserver le XMP et la conformance.
+
+À traiter en J3+, après que `pdf-a` existe.
+
+=== Avec aloli-crystal/secrets
+
+PDF/A-3 + embedded files ouvre la voie à des PDFs « porteurs » de
+secrets chiffrés (cf. [project_secrets_state.md] : `.env.age`). Un
+PDF signé peut transporter un fichier .age en pièce jointe, le tout
+conforme à l'archivage légal.
+
+=== Avec aloli-crystal/shard-template
+
+Les trois nouveaux shards (`pdf-a`, `pdf-ua`, `pdf-validate`) sont
+bootstrappés depuis le template officiel ALOLI (cf.
+[reference_shard_template.md]). Ils héritent automatiquement de :
+versioning, README bilingue, ameba, CI, doc Antora, CLI helper.
+
+== Hors scope assumé
+
+Trois profils ISO sont explicitement **hors scope** de cette
+trajectoire :
+
+* **PDF/X (ISO 15930)** — pré-presse pour imprimeurs. ALOLI ne cible
+  pas le marché de l'imprimerie offset. Si un besoin client précis
+  émerge, on le traitera en sur-mesure, pas en shard maintenu.
+* **PDF/E (ISO 24517)** — engineering 3D, CAO, BIM. Pas de signal
+  marché ALOLI.
+* **PDF/VT (ISO 16612)** — transactionnel variable massif. Marché
+  niche (mailing personnalisé à grande échelle). Pas notre cible.
+
+Cette exclusion est **assumée** : elle figure dans le README du
+shard et dans cette section. Si demain un client demande PDF/X,
+la réponse est « non, mais on peut générer un PDF/A-2b avec les
+mêmes garanties d'archivage » ou bien « hors scope, le besoin
+est trop spécifique pour justifier la maintenance d'un profil ».
+
+PDF/A-1 (ISO 19005-1) est aussi exclu : il est techniquement
+obsolète (basé sur PDF 1.4, sans transparence), et PDF/A-2b le
+couvre fonctionnellement avec un PDF 1.7 sous-jacent.
+
+== Risques et garde-fous
+
+[cols="3,4",options="header"]
+|===
+| Risque | Garde-fou
+
+| Le validateur (J5) prend 12 à 18 mois homme. Si la priorité métier
+  change, on se retrouve avec un noyau étendu mais pas de certification.
+| `pdf` reste en `0.x` tant que J5 n'est pas livré : message clair
+  que la promesse n'est pas tenue. La bascule en `1.0.0` est
+  *conditionnée* au validateur. Pas d'effet d'annonce.
+
+| Manque de parc de PDFs de référence pour valider `pdf-validate`.
+| Constituer le parc dès J3 (PDF générés par `pdf-a` + PDF tiers
+  veraPDF-validés + PDF volontairement cassés). Documenter le parc
+  dans `pdf-validate/test/corpus/`.
+
+| Les API de tagging J2 risquent de casser le shard `crystal-asciidoctor-pdf`.
+| POC sur 3 documents AsciiDoc réels avant gel d'API. Coordination
+  explicite entre les deux roadmaps.
+
+| Multiplication des shards (`pdf`, `pdf-a`, `pdf-ua`, `pdf-validate`)
+  augmente la charge de maintenance (CI, releases, versions).
+| Chaque shard est bootstrappé depuis le template officiel : CI et
+  release uniformes. Releases groupées tant que les API se
+  stabilisent.
+
+| Dépendance à veraPDF (Java) pour valider en attendant J5.
+| Accepté : veraPDF est l'oracle de référence du marché. On le
+  documente comme dépendance de test, pas runtime.
+
+| ISO 32000-2 (PDF 2.0) bouge encore (extensions cryptographiques
+  publiées en 2024-2025). Risque d'implémenter et de retoucher.
+| Implémenter PDF 2.0 *après* J5 (donc post `1.0.0`). Les jalons
+  J1-J5 restent dans le périmètre PDF 1.7 stable.
+|===
+
+== Décisions actées et ouvertes
+
+=== Actées le 2026-05-28
+
+. **Ambition : pragmatique ALOLI** — ISO 32000-1 complet + PDF/A-2b/3b
+  + PDF/UA-1 + extensions PDF 2.0 crypto. PDF/X, PDF/E, PDF/VT hors
+  scope.
+. **Périmètre : générateur + validateur**. Le shard `pdf-validate`
+  est en J5, équivalent veraPDF restreint aux profils ALOLI.
+. **Architecture : éclatement par profil**. Quatre shards :
+  `pdf`, `pdf-a`, `pdf-ua`, `pdf-validate`.
+. **Versionnement** : `pdf` reste en `0.x` jusqu'à la livraison de
+  `pdf-validate` au critère de sortie. Les trois nouveaux shards
+  démarrent en `0.1.0`.
+. **Validateur déclaratif** : moteur générique + règles YAML, format
+  inspiré veraPDF mais simplifié. Traçabilité explicite à la clause
+  ISO dans chaque règle.
+. **J0 — AcroForm interactif avant J1** : besoin métier immédiat
+  pour formulaires remplissables. MVP 2-3 semaines avec
+  `/NeedAppearances true`. Cible `pdf 0.5.6`.
+
+=== Ouvertes (à trancher avant J1)
+
+. **Choix du profil ICC par défaut** : sRGB v4 ou sRGB v2 ? FOGRA39
+  ou autre pour CMYK ? Vérifier ce que recommandent les VAR
+  validateurs PDF/A.
+. **Stratégie de parsing XMP** : implémenter un mini parseur XML
+  natif ou dépendre d'un shard XML existant ? `crystal-xml` ?
+. **Politique de versions PDF générées** : `pdf` choisit-il
+  automatiquement la version PDF la plus basse qui couvre les
+  features utilisées, ou laisse-t-il l'utilisateur fixer ?
+. **Format des règles** : YAML strict, ou TOML ? Cohérence avec
+  `aloli-crystal/secrets` qui utilise TOML pour le roster pousse
+  vers TOML.
+
+Ces points sont des arbitrages d'implémentation, pas des choix
+structurels. Ils peuvent être tranchés au moment où le code
+correspondant est écrit, sans remettre en cause cette trajectoire.
+
+== Étape immédiate
+
+. ✅ Nettoyer le résidu `docs/DEVELOPMENT_ROADMAP.adoc` (concerne
+  `crystal-asciidoctor-pdf`, pas ce shard) — fait 2026-05-28.
+. **Démarrer J0** : implémentation AcroForm interactif MVP (en
+  cours).
+. À la fin de J0 : ouvrir une issue *meta* sur le repo
+  `aloli-crystal/pdf` qui pointe vers ce document, et décider du
+  profil ICC sRGB par défaut avant d'attaquer J1.
+
+La prochaine relecture de ce document est prévue à la fin de J0
+(vers `0.5.6`), pour confirmer le passage à J1 et son ordre de
+priorités.

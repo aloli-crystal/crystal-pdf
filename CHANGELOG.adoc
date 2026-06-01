@@ -7,6 +7,70 @@ All notable changes to pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v0.5.7 — 2026-06-01
+
+=== Added
+
+* **Interactive AcroForm support (J0 of the ISO PDF trajectory).** New
+  `PDF::AcroForm` module that produces fillable forms in Acrobat Reader,
+  Preview macOS, Firefox PDF.js and Chrome. Five field types are
+  supported in this first iteration :
++
+--
+** **Text** (`/FT /Tx`) — single- and multi-line, with `MaxLen`,
+   `Password`, `Multiline`, alignment, default/initial value.
+** **Checkbox** (`/FT /Btn` without `Pushbutton`/`Radio` flags) —
+   `/Yes`/`/Off` states, with default state.
+** **Radio group** (`/FT /Btn` with `Radio` flag) — kid widgets share
+   `/Parent`, each carries `/AP /N` with native Form XObjects (empty
+   ring for "off", ring + filled center dot for "selected") so the
+   buttons are visible on every viewer. Without `/AP` Acrobat and
+   Preview render nothing for radio kids ; without `/Parent` they
+   ignore the kids entirely.
+** **Dropdown / combo box** (`/FT /Ch` with `Combo` flag) — accepts
+   either `Array(String)` (value = label) or `Hash(String, String)`
+   (export value ⇒ display label), per PDF spec § 12.7.4.4.
+** **Listbox** (`/FT /Ch` without `Combo` flag) — multi-line choice
+   without dropdown.
+--
++
+DSL :
++
+[source,crystal]
+----
+pdf.acroform do |form|
+  form.text_field("nom", page: page, x: 100, y: 700, width: 200, height: 20)
+  form.radio_group("genre", page: page, options: ["M", "F"], x: 100, y: 600)
+  form.dropdown("pays", page: page, options: {"FR" => "France"}, x: 100, y: 550, width: 120, height: 20)
+end
+----
++
+This MVP relies on `/NeedAppearances true` for text/checkbox/dropdown
+appearance streams (the viewer regenerates them on fill). Custom
+appearance streams across all field types will come in J1.
+
+* **`doc/RATIONALE.adoc`** — substantive design document for the ISO
+  PDF trajectory of this shard over the next 18-24 months : pragmatic
+  ambition (ISO 32000-1 + PDF/A-2b/3b + PDF/UA-1 + PDF 2.0 crypto
+  extensions), planned split into four shards (`pdf`, `pdf-a`, `pdf-ua`,
+  `pdf-validate`), five milestones (J1-J5), declarative validator
+  inspired by veraPDF. Out of scope assumed : PDF/X, PDF/E, PDF/VT.
+
+* **`examples/acroform.cr`** — end-to-end demo that exercises every
+  field type. Generates `acroform_demo.pdf` (~8 KB) ready to open and
+  fill in any of the four major viewers.
+
+=== Changed
+
+* `PDF::Document` exposes `#acroform(&)` and `#acroform?`.
+* `PDF::Page` exposes `#add_annotation_ref` so AcroForm can attach
+  pre-registered widget annotation references to `/Annots` without
+  re-registering them.
+* `Document#finalize!` now finalizes the AcroForm *before* the pages,
+  so widget references land in the right `/Annots` arrays. Without
+  this ordering the widgets exist as indirect objects but are never
+  linked to a page.
+
 == v0.5.6 — 2026-06-01
 
 === Fixed

@@ -117,3 +117,6 @@ require "./pdf/page_formatted_text"
 require "./pdf/page_bounding_box"
 require "./pdf/page_table"
 require "./pdf/page_svg"
+
+# Interactive forms (AcroForm — PDF spec § 12.7)
+require "./pdf/acroform"

@@ -62,6 +62,11 @@ module PDF
     # Annots on this page (links, text notes, etc.)
     @annots : Array(Annot)
 
+    # Pre-registered annotation references (e.g. AcroForm widgets
+    # whose dictionaries were registered by `AcroForm::Form#finalize!`
+    # and must be added to `/Annots` without being re-registered).
+    @annot_refs : Array(Objects::Reference)
+
     # The page's indirect object (set after finalization)
     @page_object : Objects::Indirect?
 
@@ -115,6 +120,7 @@ module PDF
       @shading_resources = {} of String => Objects::Reference
       @stamp_resources = {} of String => Objects::Reference
       @annots = [] of Annot
+      @annot_refs = [] of Objects::Reference
       @pre_allocated_id = @document.allocate_object_id
     end
 
@@ -140,6 +146,15 @@ module PDF
     # ```
     def add_annotation(annot : Annot) : self
       @annots << annot
+      self
+    end
+
+    # Attaches a pre-registered indirect reference to the page's
+    # `/Annots` array. Used by `AcroForm::Form#finalize!` for widget
+    # annotations whose dictionary is shared with a field (so it is
+    # registered once by AcroForm, not re-registered here).
+    def add_annotation_ref(ref : Objects::Reference) : self
+      @annot_refs << ref
       self
     end
 
@@ -1507,12 +1522,16 @@ module PDF
         dict["Contents"] = content_stream.reference
       end
 
-      # Add annotations if any
-      unless @annots.empty?
+      # Add annotations if any (regular Annots that need to be
+      # registered + pre-registered references coming from AcroForm).
+      unless @annots.empty? && @annot_refs.empty?
         annots = Objects::Array.new
         @annots.each do |an|
           annot_obj = @document.register_object(an.dict)
           annots << annot_obj.reference
+        end
+        @annot_refs.each do |ref|
+          annots << ref
         end
         dict["Annots"] = annots
       end

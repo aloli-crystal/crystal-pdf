@@ -68,6 +68,14 @@ module PDF
     # Document outline (bookmarks)
     @outline : Outline?
 
+    # Interactive form (AcroForm). Nil until `#acroform` is called.
+    @acroform : AcroForm::Form?
+
+    # AcroForm's catalog reference, computed by `finalize!` *before*
+    # pages are finalized so that widget annotations are attached
+    # to the right pages' /Annots arrays.
+    @acroform_ref : Objects::Reference?
+
     # Encryption settings (nil = no encryption)
     # Conservé pour rétrocompatibilité — `pdf.encrypt(...)` initialise
     # AUSSI `@security_handler` (le moteur réel de chiffrement) ; les
@@ -227,6 +235,35 @@ module PDF
     # ```
     def outline : Outline
       @outline ||= Outline.new(self)
+    end
+
+    # Returns the document's interactive form, creating it on first
+    # access. Yields it to the block if one is given.
+    #
+    # ```
+    # pdf.acroform do |form|
+    #   form.text_field("nom", page: page, x: 100, y: 700, width: 200, height: 20)
+    #   form.checkbox("rgpd", page: page, x: 100, y: 650)
+    # end
+    # ```
+    def acroform(&) : AcroForm::Form
+      form = (@acroform ||= AcroForm::Form.new(self))
+      yield form
+      form
+    end
+
+    # ditto
+    def acroform : AcroForm::Form
+      @acroform ||= AcroForm::Form.new(self)
+    end
+
+    # `true` if the document has an AcroForm with at least one field.
+    def acroform? : Bool
+      if f = @acroform
+        !f.fields.empty?
+      else
+        false
+      end
     end
 
     # Chiffre le document avec un mot de passe et un niveau de
@@ -454,6 +491,14 @@ module PDF
     # Finalizes all pages and objects for writing.
     # Called by the writer before serialization.
     def finalize! : Nil
+      # Pre-finalize AcroForm so widget annotation references are
+      # attached to each page's /Annots *before* the page is
+      # finalized. Without this, the widgets would be registered as
+      # indirect objects but never linked from /Annots.
+      if (form = @acroform) && !form.fields.empty?
+        @acroform_ref = form.finalize!
+      end
+
       # Finalize each page (creates content streams, registers resources)
       @pages.each(&.finalize!)
 
@@ -483,6 +528,11 @@ module PDF
         if outline_ref = outline_obj.finalize!
           dict["Outlines"] = outline_ref
         end
+      end
+
+      # Add /AcroForm if it was pre-finalized in `#finalize!`.
+      if ref = @acroform_ref
+        dict["AcroForm"] = ref
       end
 
       # Add XMP metadata
