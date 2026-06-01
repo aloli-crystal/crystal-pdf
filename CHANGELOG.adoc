@@ -7,6 +7,38 @@ All notable changes to pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v0.6.1 — 2026-06-01 — CFF parser (read-only, palier 1/4)
+
+=== Added
+
+* **CFF (Compact Font Format) read-only parser** — first palier of
+  the native OTF subsetting work (cf.
+  `roadmap_pdf_cff_subsetting.md`). The new `PDF::Fonts::CFF::Parser`
+  reads the Adobe CFF structure embedded in OpenType `.otf` files
+  into in-memory objects :
++
+--
+** `CFF::Index` — generic INDEX reader (Name, Top DICT, String,
+   Global Subr, CharStrings, Local Subr, FDArray).
+** `CFF::Dict` — DICT operand/operator decoder (short int, 2-byte
+   int, BCD real, 1- and 2-byte operators).
+** `CFF::Parser` — orchestrator. Detects CIDFonts via `/ROS`, reads
+   the Top DICT, CharStrings, Private DICT, Local Subrs, plus FDArray
+   / Private / Local Subrs / FDSelect for CIDFonts.
+--
++
+**No modification of CFF data yet** — this palier is read-only.
+Subsequent paliers (0.6.2 : Type 2 analyser ; 0.6.3 : subsetter ;
+0.6.4 : `TrueTypeFont.load(.otf)` wiring) will build on top.
+
+=== Validated against
+
+* `/System/Library/Fonts/LastResort.otf` (2.5 KB, non-CID CFF) —
+  spec'd as an integration test.
+* `NotoSansCJKsc-Thin.otf` (15 MB, CIDFont with 65 535 glyphs,
+  2342 global subrs, 19 FDs) — parsed cleanly in a manual smoke
+  test.
+
 == v0.6.0 — 2026-06-01 — J1 milestone closure
 
 This release closes milestone **J1** of the ISO PDF trajectory

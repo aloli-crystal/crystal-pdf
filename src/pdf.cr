@@ -61,6 +61,7 @@ require "./pdf/content/graphics_state"
 require "./pdf/fonts/base"
 require "./pdf/fonts/type1"
 require "./pdf/fonts/truetype"
+require "./pdf/fonts/cff"
 require "./pdf/fonts/truetype_font"
 require "./pdf/fonts/icon_font"
 
