@@ -450,6 +450,90 @@ describe PDF::AcroForm do
     end
   end
 
+  describe "Extended field flags" do
+    it "TextField encodes FileSelect, DoNotSpellCheck and DoNotScroll in /Ff" do
+      pdf = PDF::Document.new
+      page = pdf.page { |_| }
+      field = nil
+      pdf.acroform do |form|
+        field = form.text_field(
+          "f", page: page, x: 0, y: 0, width: 100, height: 20,
+          file_select: true, do_not_spell_check: true, do_not_scroll: true,
+        )
+      end
+      ff = field.not_nil!.dict["Ff"].as(PDF::Objects::Number).value.to_i
+      (ff & PDF::AcroForm::TextField::FILE_SELECT).should_not eq(0)
+      (ff & PDF::AcroForm::TextField::DO_NOT_SPELL_CHECK).should_not eq(0)
+      (ff & PDF::AcroForm::TextField::DO_NOT_SCROLL).should_not eq(0)
+    end
+
+    it "TextField with comb: true requires max_length" do
+      pdf = PDF::Document.new
+      page = pdf.page { |_| }
+      expect_raises(ArgumentError, /comb.*requires.*max_length/) do
+        pdf.acroform do |form|
+          form.text_field("c", page: page, x: 0, y: 0, width: 100, height: 20, comb: true)
+        end
+        # configure runs at finalize ; trigger it
+        pdf.to_slice
+      end
+    end
+
+    it "TextField with comb: true and max_length sets the Comb bit" do
+      pdf = PDF::Document.new
+      page = pdf.page { |_| }
+      field = nil
+      pdf.acroform do |form|
+        field = form.text_field("c", page: page, x: 0, y: 0, width: 100, height: 20, comb: true, max_length: 6)
+      end
+      pdf.to_slice # force configure
+      ff = field.not_nil!.dict["Ff"].as(PDF::Objects::Number).value.to_i
+      (ff & PDF::AcroForm::TextField::COMB).should_not eq(0)
+    end
+
+    it "RadioGroup encodes RadiosInUnison in /Ff" do
+      pdf = PDF::Document.new
+      page = pdf.page { |_| }
+      field = nil
+      pdf.acroform do |form|
+        field = form.radio_group("g", page: page, options: ["A", "B"], x: 0, y: 0, radios_in_unison: true)
+      end
+      pdf.to_slice # trigger configure
+      ff = field.not_nil!.dict["Ff"].as(PDF::Objects::Number).value.to_i
+      (ff & PDF::AcroForm::RadioGroup::RADIOS_IN_UNISON).should_not eq(0)
+    end
+
+    it "Dropdown encodes DoNotSpellCheck and CommitOnSelChange in /Ff" do
+      pdf = PDF::Document.new
+      page = pdf.page { |_| }
+      field = nil
+      pdf.acroform do |form|
+        field = form.dropdown(
+          "d", page: page, options: ["A", "B"], x: 0, y: 0, width: 100, height: 20,
+          do_not_spell_check: true, commit_on_sel_change: true,
+        )
+      end
+      ff = field.not_nil!.dict["Ff"].as(PDF::Objects::Number).value.to_i
+      (ff & PDF::AcroForm::Dropdown::DO_NOT_SPELL_CHECK).should_not eq(0)
+      (ff & PDF::AcroForm::Dropdown::COMMIT_ON_SEL_CHANGE).should_not eq(0)
+    end
+
+    it "Listbox encodes DoNotSpellCheck and CommitOnSelChange in /Ff" do
+      pdf = PDF::Document.new
+      page = pdf.page { |_| }
+      field = nil
+      pdf.acroform do |form|
+        field = form.listbox(
+          "l", page: page, options: ["A", "B", "C"], x: 0, y: 0, width: 100, height: 60,
+          do_not_spell_check: true, commit_on_sel_change: true,
+        )
+      end
+      ff = field.not_nil!.dict["Ff"].as(PDF::Objects::Number).value.to_i
+      (ff & PDF::AcroForm::Listbox::DO_NOT_SPELL).should_not eq(0)
+      (ff & PDF::AcroForm::Listbox::COMMIT_ON_SEL).should_not eq(0)
+    end
+  end
+
   describe "SignatureField" do
     it "builds a /Sig field with no /V (signed later by pdf-signature)" do
       pdf = PDF::Document.new

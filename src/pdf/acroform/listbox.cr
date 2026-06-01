@@ -46,6 +46,16 @@ module PDF
       property default_value : Array(String)? = nil
       property sort : Bool = false
 
+      # When `do_not_spell_check` is true viewers should not run their
+      # spell checker on user input (no effect for the non-editable
+      # listbox itself, but kept for symmetry with Dropdown).
+      property do_not_spell_check : Bool = false
+
+      # When `commit_on_sel_change` is true the field commits its
+      # value as soon as the selection changes, not only on focus
+      # change.
+      property commit_on_sel_change : Bool = false
+
       def initialize(
         name : String,
         page : Page,
@@ -101,6 +111,8 @@ module PDF
         f = super
         f |= MULTI_SELECT
         f |= SORT if @sort
+        f |= DO_NOT_SPELL if @do_not_spell_check
+        f |= COMMIT_ON_SEL if @commit_on_sel_change
         f
       end
 

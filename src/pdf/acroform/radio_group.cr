@@ -24,6 +24,7 @@ module PDF
       PUSHBUTTON       = 1 << 16 # bit 17 (not set here)
       RADIO            = 1 << 15 # bit 16
       NO_TOGGLE_TO_OFF = 1 << 14 # bit 15
+      RADIOS_IN_UNISON = 1 << 25 # bit 26
 
       # Options for the group. May be either an `Array(String)` (the
       # state codes themselves) or a `Hash(String, String)` mapping
@@ -45,6 +46,12 @@ module PDF
       property selected : String? = nil
 
       property no_toggle_to_off : Bool = true
+
+      # When `radios_in_unison` is true, radio buttons that share
+      # the same value name (across multiple groups) are toggled
+      # together. Useful for "yes/no" radios duplicated on every
+      # page. PDF spec § 12.7.4.2.3.
+      property radios_in_unison : Bool = false
 
       # Pre-allocated object ID for this radio field, set by
       # `Form#finalize!` *before* the parent dict is built so kids
@@ -111,6 +118,7 @@ module PDF
         f = super
         f |= RADIO
         f |= NO_TOGGLE_TO_OFF if @no_toggle_to_off
+        f |= RADIOS_IN_UNISON if @radios_in_unison
         f
       end
 

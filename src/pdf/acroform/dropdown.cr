@@ -29,14 +29,26 @@ module PDF
     # ```
     class Dropdown < Field
       # Field flag bits specific to choice fields (PDF spec table 230)
-      COMBO = 1 << 17 # bit 18 (1 = combo / dropdown, 0 = list)
-      EDIT  = 1 << 18 # bit 19 (editable combo)
-      SORT  = 1 << 19 # bit 20 (sort options on display)
+      COMBO                = 1 << 17 # bit 18 (1 = combo / dropdown, 0 = list)
+      EDIT                 = 1 << 18 # bit 19 (editable combo)
+      SORT                 = 1 << 19 # bit 20 (sort options on display)
+      DO_NOT_SPELL_CHECK   = 1 << 22 # bit 23
+      COMMIT_ON_SEL_CHANGE = 1 << 26 # bit 27
 
       getter options : Array(String) | Hash(String, String)
       property value : String? = nil
       property default_value : String? = nil
       property editable : Bool = false
+
+      # When `do_not_spell_check` is true and the dropdown is also
+      # editable, viewers should not run their spell checker on the
+      # typed value.
+      property do_not_spell_check : Bool = false
+
+      # When `commit_on_sel_change` is true the field commits its
+      # value as soon as the user picks an option, rather than only
+      # on focus change. Useful for forms that drive other fields.
+      property commit_on_sel_change : Bool = false
 
       def initialize(
         name : String,
@@ -84,6 +96,8 @@ module PDF
         f = super
         f |= COMBO
         f |= EDIT if @editable
+        f |= DO_NOT_SPELL_CHECK if @do_not_spell_check
+        f |= COMMIT_ON_SEL_CHANGE if @commit_on_sel_change
         f
       end
 

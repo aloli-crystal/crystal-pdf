@@ -8,10 +8,12 @@ module PDF
     # ```
     class TextField < Field
       # Field flag bits (PDF spec table 228)
-      MULTILINE     = 1 << 12 # bit 13
-      PASSWORD      = 1 << 13 # bit 14
-      FILE_SELECT   = 1 << 20 # bit 21
-      DO_NOT_SCROLL = 1 << 23 # bit 24
+      MULTILINE          = 1 << 12 # bit 13
+      PASSWORD           = 1 << 13 # bit 14
+      FILE_SELECT        = 1 << 20 # bit 21
+      DO_NOT_SPELL_CHECK = 1 << 22 # bit 23
+      DO_NOT_SCROLL      = 1 << 23 # bit 24
+      COMB               = 1 << 24 # bit 25
 
       property value : String? = nil
       property default_value : String? = nil
@@ -19,6 +21,26 @@ module PDF
       property multiline : Bool = false
       property password : Bool = false
       property alignment : Symbol = :left # :left, :center, :right
+
+      # When `file_select` is true the field acts as a file picker
+      # — the value is interpreted as a file path, not arbitrary
+      # text. Forbidden in PDF/A.
+      property file_select : Bool = false
+
+      # When `do_not_spell_check` is true viewers should not run their
+      # spell checker on the field's contents.
+      property do_not_spell_check : Bool = false
+
+      # When `do_not_scroll` is true the field has a fixed visible
+      # length — text exceeding the rectangle is truncated rather
+      # than scrolled.
+      property do_not_scroll : Bool = false
+
+      # When `comb` is true and `max_length` is set, the field is
+      # rendered as a sequence of `max_length` equally-spaced cells
+      # (typical for code/serial-number entry). Requires `max_length`
+      # to be set explicitly.
+      property comb : Bool = false
 
       def initialize(
         name : String,
@@ -42,6 +64,13 @@ module PDF
         f = super
         f |= MULTILINE if @multiline
         f |= PASSWORD if @password
+        f |= FILE_SELECT if @file_select
+        f |= DO_NOT_SPELL_CHECK if @do_not_spell_check
+        f |= DO_NOT_SCROLL if @do_not_scroll
+        if @comb
+          raise ArgumentError.new("TextField '#{@name}' : `comb: true` requires `max_length:` to be set explicitly") if @max_length.nil?
+          f |= COMB
+        end
         f
       end
 

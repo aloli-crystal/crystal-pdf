@@ -45,6 +45,10 @@ module PDF
         required : Bool = false,
         read_only : Bool = false,
         no_export : Bool = false,
+        file_select : Bool = false,
+        do_not_spell_check : Bool = false,
+        do_not_scroll : Bool = false,
+        comb : Bool = false,
       ) : TextField
         rect = {x.to_f, y.to_f, x.to_f + width.to_f, y.to_f + height.to_f}
         field = TextField.new(
@@ -61,6 +65,10 @@ module PDF
         field.required = required
         field.read_only = read_only
         field.no_export = no_export
+        field.file_select = file_select
+        field.do_not_spell_check = do_not_spell_check
+        field.do_not_scroll = do_not_scroll
+        field.comb = comb
         add(field)
         field
       end
@@ -109,6 +117,7 @@ module PDF
         size : Number = 12,
         selected : String? = nil,
         no_toggle_to_off : Bool = true,
+        radios_in_unison : Bool = false,
         required : Bool = false,
         read_only : Bool = false,
         no_export : Bool = false,
@@ -123,6 +132,7 @@ module PDF
           selected: selected,
           no_toggle_to_off: no_toggle_to_off,
         )
+        field.radios_in_unison = radios_in_unison
         field.required = required
         field.read_only = read_only
         field.no_export = no_export
@@ -146,6 +156,8 @@ module PDF
         value : String? = nil,
         default_value : String? = nil,
         editable : Bool = false,
+        do_not_spell_check : Bool = false,
+        commit_on_sel_change : Bool = false,
         required : Bool = false,
         read_only : Bool = false,
         no_export : Bool = false,
@@ -160,6 +172,8 @@ module PDF
           default_value: default_value,
           editable: editable,
         )
+        field.do_not_spell_check = do_not_spell_check
+        field.commit_on_sel_change = commit_on_sel_change
         field.required = required
         field.read_only = read_only
         field.no_export = no_export
@@ -183,6 +197,8 @@ module PDF
         value : Array(String)? = nil,
         default_value : Array(String)? = nil,
         sort : Bool = false,
+        do_not_spell_check : Bool = false,
+        commit_on_sel_change : Bool = false,
         required : Bool = false,
         read_only : Bool = false,
         no_export : Bool = false,
@@ -197,6 +213,8 @@ module PDF
           default_value: default_value,
           sort: sort,
         )
+        field.do_not_spell_check = do_not_spell_check
+        field.commit_on_sel_change = commit_on_sel_change
         field.required = required
         field.read_only = read_only
         field.no_export = no_export

@@ -7,6 +7,21 @@ Toutes les évolutions notables de pdf sont consignées ici. Le
 format suit https://keepachangelog.com/fr/1.1.0/[Keep a Changelog] et
 le versionnage respecte https://semver.org/lang/fr/[SemVer].
 
+== v0.5.10 — 2026-06-01
+
+=== Ajouté
+
+* **Drapeaux AcroForm étendus** — contrôle fin du comportement de
+  chaque type de champ (PDF spec § 12.7.4 tables 228/229/230) :
++
+--
+** `TextField` : `file_select`, `do_not_spell_check`, `do_not_scroll`,
+   `comb` (rendu cellulaire — requiert `max_length:`).
+** `RadioGroup` : `radios_in_unison` (bascule inter-groupes).
+** `Dropdown` : `do_not_spell_check`, `commit_on_sel_change`.
+** `Listbox` : `do_not_spell_check`, `commit_on_sel_change`.
+--
+
 == v0.5.9 — 2026-06-01
 
 === Ajouté

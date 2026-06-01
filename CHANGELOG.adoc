@@ -7,6 +7,21 @@ All notable changes to pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v0.5.10 — 2026-06-01
+
+=== Added
+
+* **Extended AcroForm field flags** — fine-grained control over
+  each field type's behaviour (PDF spec § 12.7.4 tables 228/229/230) :
++
+--
+** `TextField` : `file_select`, `do_not_spell_check`, `do_not_scroll`,
+   `comb` (cellular layout — requires `max_length:`).
+** `RadioGroup` : `radios_in_unison` (cross-group toggle).
+** `Dropdown` : `do_not_spell_check`, `commit_on_sel_change`.
+** `Listbox` : `do_not_spell_check`, `commit_on_sel_change`.
+--
+
 == v0.5.9 — 2026-06-01
 
 === Added
