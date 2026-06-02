@@ -26,10 +26,10 @@ module PDF
         TOP_PRIVATE     =   0x12
         TOP_CHARSET     =   0x0F
         TOP_ENCODING    =   0x10
-        TOP_ROS      = 0x0C1E # CIDFont marker (registry, ordering, supplement)
-        TOP_CIDCOUNT = 0x0C22
-        TOP_FDARRAY  = 0x0C24
-        TOP_FDSELECT = 0x0C25
+        TOP_ROS         = 0x0C1E # CIDFont marker (registry, ordering, supplement)
+        TOP_CIDCOUNT    = 0x0C22
+        TOP_FDARRAY     = 0x0C24
+        TOP_FDSELECT    = 0x0C25
 
         # Private DICT operators.
         PRIVATE_SUBRS = 0x13

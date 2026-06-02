@@ -7,6 +7,60 @@ Toutes les évolutions notables de pdf sont consignées ici. Le
 format suit https://keepachangelog.com/fr/1.1.0/[Keep a Changelog] et
 le versionnage respecte https://semver.org/lang/fr/[SemVer].
 
+== v0.6.2 — 2026-06-01 — Analyseur Type 2 charstring (palier 2/4)
+
+=== Ajouté
+
+* **Analyseur de charstrings Type 2 CFF** — palier 2 du subsetting
+  OTF natif. Nouvelle classe `PDF::Fonts::CFF::Type2Analyser` qui
+  parcourt le bytecode d'un glyphe sans le rendre, et trace
+  *transitivement* (en suivant `callsubr` (10) et `callgsubr` (29))
+  les sous-routines locales et globales référencées.
++
+[source,crystal]
+----
+analyser = PDF::Fonts::CFF::Type2Analyser.new(cff_parser)
+local_used, global_used = analyser.analyse(gid)
+# => {Set(Int32), Set(Int32)} : indices des subrs atteintes depuis
+# ce glyphe (transitivement à travers les appels imbriqués).
+----
++
+La sortie alimente le palier 0.6.3 (subsetter), qui s'en sert pour
+calculer la fermeture des subrs à conserver après élagage des
+glyphes inutilisés.
+
+=== Notes d'implémentation
+
+* **Biais des subrs** : l'analyseur implémente la formule de la
+  Tech Note #5176 § 4.7 (107 / 1131 / 32768 selon le nombre de
+  subrs).
+* **Conscience CIDFont** : pour les CIDFont, le jeu de local subrs
+  applicable à chaque glyphe est sélectionné via FDSelect →
+  FDArray[fd] et son Private DICT.
+* **Particularité du hint mask** : `hintmask` (19) et `cntrmask`
+  (20) sont suivis d'un bitmask de `ceil(num_stems / 8)` octets,
+  dont la taille dépend du nombre cumulé de stems déclarés dans
+  *tout le glyphe* — y compris dans les subrs appelés. Le walker
+  partage un `WalkState` entre appels récursifs pour suivre ce
+  compteur correctement.
+* **Protection anti-cycle** : les indices de subrs sont enregistrés
+  dans un `Set` avant la récursion ; une seconde visite au même
+  subr est sautée, ce qui empêche les cycles (illégaux mais
+  observés dans certaines fontes pathologiques) de faire exploser
+  la pile.
+
+=== Validé contre
+
+* 10 specs unitaires couvrant le biais subr, callsubr/callgsubr,
+  subrs imbriqués, dédup, saut du hintmask, indices subr hors
+  bornes.
+* Smoke test sur `NotoSansCJKsc-Thin.otf` (15 Mo, 65 535 glyphes,
+  19 FDs, 2 342 global subrs) : fonte entière analysée en **0,83 s**
+  sans erreur. 100 % des global subrs et ~99-100 % des local subrs
+  par FD sont atteints quand on parcourt tous les glyphes (attendu
+  sur une fonte complète — le subsetting réduira ces chiffres en
+  0.6.3).
+
 == v0.6.1 — 2026-06-01 — Parser CFF (lecture seule, palier 1/4)
 
 === Ajouté

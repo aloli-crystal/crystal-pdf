@@ -7,6 +7,53 @@ All notable changes to pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v0.6.2 — 2026-06-01 — Type 2 charstring analyser (palier 2/4)
+
+=== Added
+
+* **CFF Type 2 charstring analyser** — palier 2 of the native OTF
+  subsetting trajectory. New class `PDF::Fonts::CFF::Type2Analyser`
+  walks the bytecode of a glyph without rendering it, tracking which
+  local and global subroutines are referenced — *transitively*, by
+  following `callsubr` (10) and `callgsubr` (29) into their target
+  subrs.
++
+[source,crystal]
+----
+analyser = PDF::Fonts::CFF::Type2Analyser.new(cff_parser)
+local_used, global_used = analyser.analyse(gid)
+# => {Set(Int32), Set(Int32)} of subroutine indices reached from
+# this glyph (transitively across nested callsubr/callgsubr).
+----
++
+The output feeds palier 0.6.3 (subsetter), which uses it to compute
+the closure of subrs to keep when stripping unused glyphs.
+
+=== Implementation notes
+
+* **Subroutine bias** : the analyser implements the Tech Note #5176
+  § 4.7 bias formula (107 / 1131 / 32768 depending on subr count).
+* **CIDFont awareness** : for CIDFonts the per-glyph local subr set
+  is selected via FDSelect → FDArray[fd]'s Private DICT.
+* **Hint-mask peculiarity** : `hintmask` (19) and `cntrmask` (20)
+  are followed by a `ceil(num_stems / 8)`-byte bitmask whose length
+  depends on the cumulative stem count across the *whole glyph*,
+  including any stems declared inside called subrs. The walker
+  shares a `WalkState` across nested calls to track this correctly.
+* **Cycle protection** : subr indices are recorded in a `Set` before
+  recursion ; a second visit to the same subr is skipped, so cycles
+  (illegal but real in some pathological fonts) cannot blow the stack.
+
+=== Validated against
+
+* 10 unit specs covering subr bias, callsubr/callgsubr, nested
+  subrs, dedup, hintmask skipping, out-of-range subr indices.
+* Smoke test on `NotoSansCJKsc-Thin.otf` (15 MB, 65 535 glyphs,
+  19 FDs, 2 342 global subrs) : entire font analysed in **0.83 s**
+  with no errors. 100 % of global subrs and ~99-100 % of per-FD
+  local subrs are reached when traversing all glyphs (expected on
+  a full font — subsetting will reduce these numbers in 0.6.3).
+
 == v0.6.1 — 2026-06-01 — CFF parser (read-only, palier 1/4)
 
 === Added
