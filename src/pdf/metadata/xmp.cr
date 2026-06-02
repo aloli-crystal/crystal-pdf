@@ -16,6 +16,8 @@ module PDF
         producer : String = "pdf.cr #{PDF::VERSION}",
         creation_date : Time = Time.utc,
         modification_date : Time = Time.utc,
+        pdfa_part : Int32? = nil,
+        pdfa_conformance : String? = nil,
       ) : Objects::Stream
         xml = generate_xml(
           title: title,
@@ -25,7 +27,9 @@ module PDF
           creator: creator,
           producer: producer,
           creation_date: creation_date,
-          modification_date: modification_date
+          modification_date: modification_date,
+          pdfa_part: pdfa_part,
+          pdfa_conformance: pdfa_conformance
         )
 
         stream = Objects::Stream.new
@@ -46,6 +50,8 @@ module PDF
         producer : String,
         creation_date : Time,
         modification_date : Time,
+        pdfa_part : Int32? = nil,
+        pdfa_conformance : String? = nil,
       ) : String
         create_iso = xmp_date(creation_date)
         modify_iso = xmp_date(modification_date)
@@ -101,6 +107,16 @@ module PDF
           # XMP dates
           io << %(<xmp:CreateDate>) << create_iso << %(</xmp:CreateDate>\n)
           io << %(<xmp:ModifyDate>) << modify_iso << %(</xmp:ModifyDate>\n)
+
+          # PDF/A identification (pdfaid). REQUIRED for a conforming
+          # PDF/A file : declares the part (1/2/3/4) and conformance
+          # level (A/B/U). Emitted only when set by the pdf-a shard.
+          if part = pdfa_part
+            io << %(<pdfaid:part>) << part << %(</pdfaid:part>\n)
+          end
+          if conf = pdfa_conformance
+            io << %(<pdfaid:conformance>) << escape_xml(conf) << %(</pdfaid:conformance>\n)
+          end
 
           io << %(</rdf:Description>\n)
           io << %(</rdf:RDF>\n)

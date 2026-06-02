@@ -276,6 +276,23 @@ describe "Document tagging (integration)" do
     out.should contain("/S /TD")
   end
 
+  it "emits XMP pdfaid identification when pdfa_part/conformance are set" do
+    pdf = PDF::Document.new
+    pdf.pdfa_part = 2
+    pdf.pdfa_conformance = "B"
+    pdf.page { |_| }
+    out = pdf.to_slice.map(&.chr).join
+    out.should contain("<pdfaid:part>2</pdfaid:part>")
+    out.should contain("<pdfaid:conformance>B</pdfaid:conformance>")
+  end
+
+  it "omits pdfaid when not a PDF/A document" do
+    pdf = PDF::Document.new
+    pdf.page { |_| }
+    out = pdf.to_slice.map(&.chr).join
+    out.should_not contain("<pdfaid:part>")
+  end
+
   it "produces a structurally valid PDF (round-trips through the reader)" do
     pdf = PDF::Document.new
     pdf.lang = "fr"

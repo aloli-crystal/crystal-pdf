@@ -90,6 +90,12 @@ module PDF
     # or "en-US"). Recommended for PDF/UA. Nil = not declared.
     property lang : String?
 
+    # PDF/A conformance identification (XMP `pdfaid`). Set by the
+    # `pdf-a` shard : `pdfa_part` is 1/2/3/4, `pdfa_conformance` is
+    # "A", "B" or "U". Both nil = not a PDF/A document.
+    property pdfa_part : Int32?
+    property pdfa_conformance : String?
+
     # File specifications for attached files (PDF/A-3, Factur-X).
     # Populated via `Document#attach_file`.
     @attached_files : Array(FileSpec) = [] of FileSpec
@@ -782,7 +788,9 @@ module PDF
         subject: @subject,
         keywords: @keywords,
         creator: @creator,
-        producer: @producer
+        producer: @producer,
+        pdfa_part: @pdfa_part,
+        pdfa_conformance: @pdfa_conformance
       )
       xmp_obj = register_object(xmp_stream)
       dict["Metadata"] = xmp_obj.reference

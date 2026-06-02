@@ -7,6 +7,23 @@ Toutes les évolutions notables de pdf sont consignées ici. Le
 format suit https://keepachangelog.com/fr/1.1.0/[Keep a Changelog] et
 le versionnage respecte https://semver.org/lang/fr/[SemVer].
 
+== v0.7.3 — 2026-06-02 — Hook d'identification XMP PDF/A (prépare J3)
+
+=== Ajouté
+
+* **`Document#pdfa_part` / `#pdfa_conformance`** — quand définis, le
+  flux XMP émet les éléments `pdfaid:part` et `pdfaid:conformance`
+  (namespace d'identification PDF/A de l'AIIM). C'est le marqueur
+  obligatoire qui déclare un fichier comme PDF/A-<part><niveau>
+  (ex. part 2, conformance « B » → PDF/A-2b).
++
+Ce hook est consommé par le nouveau shard `aloli-crystal/pdf-a`
+(J3) ; seul, `pdf` n'impose aucune contrainte PDF/A — il ne fait
+qu'enregistrer la déclaration dans le XMP.
+
+* Les documents non-PDF/A sont inchangés : aucun élément `pdfaid`
+  n'est émis quand les propriétés sont nil.
+
 == v0.7.2 — 2026-06-02 — DSL de tagging Tagged PDF (J2, palier 3/4)
 
 === Ajouté
