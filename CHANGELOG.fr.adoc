@@ -7,6 +7,52 @@ Toutes les évolutions notables de pdf sont consignées ici. Le
 format suit https://keepachangelog.com/fr/1.1.0/[Keep a Changelog] et
 le versionnage respecte https://semver.org/lang/fr/[SemVer].
 
+== v1.0.0 — 2026-06-02 — Conformité ISO certifiable
+
+Le RATIONALE fixait une seule condition au `1.0.0` : la suite doit
+pouvoir *certifier* la conformance d'un document produit, pas
+seulement l'*affirmer*. Cette condition est désormais remplie.
+
+=== Le jalon
+
+* Un document PDF/A-2b produit par `pdf` + `aloli-crystal/pdf-a` est
+  déclaré **`isCompliant="true"` par veraPDF 1.30.1** — le validateur
+  de référence du marché — avec 144 règles passées, 0 échec.
+  Certification tierce, pas un auto-contrôle.
+* Un document PDF/UA-1 produit par `pdf` + `aloli-crystal/pdf-ua`
+  passe le profil PDF/UA-1 de veraPDF (106 règles, 0 échec) sur le
+  sous-ensemble vérifiable par machine (les checkpoints Matterhorn
+  non automatisables exigent encore une revue humaine).
+* `aloli-crystal/pdf-validate` est en accord avec veraPDF sur
+  **60/60** d'un corpus PDF/A-2b généré — le critère de sortie J5
+  (≥ 95 %).
+
+=== Ce que signifie 1.0.0 ici
+
+La suite ISO PDF en quatre shards est fonctionnelle de bout en bout :
+
+[cols="1,3"]
+|===
+| `pdf` | moteur — ISO 32000-1, AcroForm, fichiers embarqués, subsetting CFF/CJK, Tagged PDF, hooks PDF/A & PDF/UA
+| `pdf-a` | configure + valide PDF/A-2b/3b (sortie certifiée veraPDF)
+| `pdf-ua` | configure + valide PDF/UA-1 (passage machine veraPDF)
+| `pdf-validate` | validateur déclaratif, 60/60 vs veraPDF
+|===
+
+=== Périmètre honnête de la revendication
+
+1.0.0 marque la conformance *certifiable* pour les classes de
+documents que la suite génère et le jeu de règles qu'elle vérifie. Il
+ne revendique PAS que `pdf-validate` reproduit les 144 règles de
+veraPDF sur des PDF tiers arbitraires — son jeu de règles est
+volontairement ciblé et s'enrichira au fil du temps. L'oracle
+faisant autorité pour un fichier donné reste veraPDF ; `pdf-validate`
+est la première ligne rapide et traçable ISO.
+
+C'est une base stable : les API publiques de `pdf` (Document, Page,
+polices, AcroForm, structure, espaces de couleur, output intents)
+sont considérées stables à partir d'ici, SemVer pour les ruptures.
+
 == v0.7.6 — 2026-06-02 — Profil sRGB d'output intent valide PDF/A
 
 === Corrigé

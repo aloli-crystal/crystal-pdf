@@ -7,6 +7,50 @@ All notable changes to pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v1.0.0 — 2026-06-02 — Certifiable ISO conformance
+
+The RATIONALE set a single condition for `1.0.0` : the suite must be
+able to *certify* the conformance of a produced document, not merely
+*claim* it. That condition is now met.
+
+=== The milestone
+
+* A PDF/A-2b document produced by `pdf` + `aloli-crystal/pdf-a` is
+  reported **`isCompliant="true"` by veraPDF 1.30.1** — the
+  market-reference validator — with 144 rules passed and 0 failed.
+  This is third-party certification, not a self-check.
+* A PDF/UA-1 document produced by `pdf` + `aloli-crystal/pdf-ua`
+  passes veraPDF's PDF/UA-1 profile (106 rules, 0 failures) on the
+  machine-checkable subset (the non-automatable Matterhorn
+  checkpoints still need human review).
+* `aloli-crystal/pdf-validate` agrees with veraPDF on **60/60** of a
+  generated PDF/A-2b corpus — the J5 exit criterion (≥ 95 %).
+
+=== What 1.0.0 means here
+
+The four-shard ISO PDF suite is functional end to end :
+
+[cols="1,3"]
+|===
+| `pdf` | engine — ISO 32000-1, AcroForm, embedded files, CFF/CJK subsetting, Tagged PDF, PDF/A & PDF/UA hooks
+| `pdf-a` | PDF/A-2b/3b configure + validate (veraPDF-certified output)
+| `pdf-ua` | PDF/UA-1 configure + validate (veraPDF machine-pass)
+| `pdf-validate` | declarative validator, 60/60 vs veraPDF
+|===
+
+=== Honest scope of the claim
+
+1.0.0 marks *certifiable* conformance for the document classes the
+suite generates and the rule set it checks. It does NOT claim that
+`pdf-validate` reproduces all 144 veraPDF rules on arbitrary
+third-party PDFs — its rule set is intentionally focused and grows
+over time. The authoritative oracle for any given file remains
+veraPDF ; `pdf-validate` is the fast, ISO-traceable first line.
+
+This is a stable baseline : the public APIs of `pdf` (Document, Page,
+fonts, AcroForm, structure, colour spaces, output intents) are
+considered stable from here, following SemVer for breaking changes.
+
 == v0.7.6 — 2026-06-02 — PDF/A-valid sRGB output-intent profile
 
 === Fixed
