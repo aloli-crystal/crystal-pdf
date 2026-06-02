@@ -7,6 +7,60 @@ Toutes les évolutions notables de pdf sont consignées ici. Le
 format suit https://keepachangelog.com/fr/1.1.0/[Keep a Changelog] et
 le versionnage respecte https://semver.org/lang/fr/[SemVer].
 
+== v0.7.1 — 2026-06-02 — Marked content Tagged PDF (J2, palier 2/4)
+
+Relie l'arbre de structure logique (0.7.0) au contenu réellement
+dessiné — le cœur d'un vrai Tagged PDF, et ce qu'un validateur
+PDF/UA suit de la structure jusqu'aux glyphes.
+
+=== Ajouté
+
+* **Marked content sur `Page`** :
+** `Page#marked_content(tag) { … }` enveloppe le dessin du bloc dans
+   une séquence `/<tag> <</MCID n>> BDC … EMC`, attribue un MCID
+   frais par page et le retourne.
+** `Page#artifact { … }` enveloppe le contenu en `/Artifact BDC …
+   EMC` (en-têtes/pieds de page, décorations) — contenu hors
+   structure logique, comme l'exige PDF/UA.
+** `Page#mcid_count`, `Page#marked_content?`.
+* **`StructElem#add_mcid(page, mcid)`** relie un élément de structure
+  à une séquence de marked content. Émis dans `/K` comme un dict de
+  référence de marked content (MCR) `<</Type /MCR /Pg … /MCID …>>`,
+  aux côtés des éventuelles références d'éléments enfants.
+* **`/ParentTree`** (number tree) sur le StructTreeRoot, plus
+  `/ParentTreeNextKey`, qui associe l'index `/StructParents` de
+  chaque page au tableau (indexé par MCID) des éléments de structure
+  propriétaires. C'est la recherche inverse qu'utilise un
+  visualiseur/validateur pour remonter d'une séquence de marked
+  content à son élément de structure.
+* **`/StructParents`** émis sur chaque page portant du marked content
+  (attribué de façon contiguë dans `Document#finalize!`).
+
+=== Sécurité
+
+* Si une page émet du marked content dont le MCID n'est jamais relié
+  à un élément de structure, `finalize!` lève une erreur claire au
+  lieu de produire un ParentTree corrompu — l'erreur de l'auteur est
+  remontée.
+* Les documents non taggés restent totalement inchangés.
+
+=== Validé
+
+* Bout-en-bout : un arbre Document → H1 / Sect(H2 + P) où chaque bloc
+  est dessiné via `marked_content` et relié via `add_mcid`, plus un
+  en-tête `artifact`. `qpdf --check` propre ; le content stream
+  décompressé montre les opérateurs BDC/EMC, et le StructTreeRoot
+  porte un ParentTree peuplé. 18 specs structure (dont vérifs des
+  opérateurs par inflate et garde-fou MCID orphelin). 930 specs au
+  total.
+
+=== Pas encore (paliers suivants)
+
+* **0.7.2** : DSL de tagging haut niveau (`page.tag(:h1) { … }`) qui
+  fusionne `marked_content` + `add_mcid` en un seul appel.
+* **0.7.3** : helpers de tagging de tables (TR/TH/TD), raffinements
+  RoleMap/ClassMap, et un POC sur des documents AsciiDoc réels.
+
 == v0.7.0 — 2026-06-02 — Modèle de structure Tagged PDF (J2, palier 1/4)
 
 Ouvre le jalon J2 (Tagged PDF + structure logique), prérequis

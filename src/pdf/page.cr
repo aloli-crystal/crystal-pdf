@@ -74,6 +74,10 @@ module PDF
     # before finalization (needed for destinations and outline items).
     @pre_allocated_id : Int32
 
+    # Next marked-content identifier (MCID) to assign on this page.
+    # Incremented by `#marked_content`. Tagged PDF (palier 0.7.1).
+    @next_mcid : Int32
+
     # Content stream object
     @content_stream : Objects::Indirect?
 
@@ -121,6 +125,8 @@ module PDF
       @stamp_resources = {} of String => Objects::Reference
       @annots = [] of Annot
       @annot_refs = [] of Objects::Reference
+      @next_mcid = 0
+      @struct_parents_index = nil
       @pre_allocated_id = @document.allocate_object_id
     end
 
@@ -134,6 +140,57 @@ module PDF
     def page_reference : Objects::Reference
       Objects::Reference.new(@pre_allocated_id)
     end
+
+    # --- Tagged PDF marked content (palier 0.7.1) ---
+
+    # Wraps the content drawn inside the block in a marked-content
+    # sequence tagged `tag` (e.g. "P", "H1", "Figure"), assigning it
+    # a fresh MCID on this page. Returns the MCID, which the caller
+    # links to a structure element via `StructElem#add_mcid`.
+    #
+    # ```
+    # mcid = page.marked_content("P") do
+    #   page.text "Bonjour", at: {72, 700}
+    # end
+    # paragraph_elem.add_mcid(page, mcid)
+    # ```
+    #
+    # Emits `/Tag <</MCID n>> BDC … EMC` around the block's content
+    # (PDF 32000-1 § 14.6 / § 14.7.4.2).
+    def marked_content(tag : String, &) : Int32
+      mcid = @next_mcid
+      @next_mcid += 1
+      @content << "/" << tag << " <</MCID " << mcid << ">> BDC\n"
+      yield
+      @content << "EMC\n"
+      mcid
+    end
+
+    # Wraps the content drawn inside the block as an *artifact* —
+    # content outside the logical structure (page headers/footers,
+    # decorative rules, backgrounds). PDF/UA requires every piece of
+    # page content to be either tagged or marked as an artifact.
+    #
+    # Emits `/Artifact BDC … EMC` (no MCID).
+    def artifact(&) : Nil
+      @content << "/Artifact BDC\n"
+      yield
+      @content << "EMC\n"
+    end
+
+    # `true` if any marked content was emitted on this page.
+    def marked_content?(*, used : Bool = true) : Bool
+      (@next_mcid > 0) == used
+    end
+
+    # Number of MCIDs assigned on this page (0 if none).
+    def mcid_count : Int32
+      @next_mcid
+    end
+
+    # The page's /StructParents index (set by `Document#finalize!`
+    # when the page carries marked content), or nil.
+    property struct_parents_index : Int32?
 
     # Adds an annotation to this page.
     #
@@ -1541,6 +1598,13 @@ module PDF
           annots << ref
         end
         dict["Annots"] = annots
+      end
+
+      # /StructParents — links this page to the document ParentTree
+      # (Tagged PDF). Set by Document#finalize! when the page carries
+      # marked content.
+      if idx = @struct_parents_index
+        dict["StructParents"] = Objects::Number.new(idx)
       end
 
       # Use the pre-allocated ID so that references created before

@@ -1,4 +1,34 @@
 require "../spec_helper"
+require "compress/zlib"
+
+# Inflates every FlateDecode stream in `bytes` and returns the
+# concatenated decoded text. Content streams are Flate-compressed by
+# default, so marked-content operators (BDC/EMC) only appear after
+# inflation.
+private def inflated_streams(bytes : Bytes) : String
+  s = String.new(bytes)
+  out = String::Builder.new
+  offset = 0
+  while (idx = s.index("stream", offset))
+    data_start = idx + "stream".size
+    # Skip the EOL after the `stream` keyword (CRLF or LF).
+    data_start += 1 if data_start < s.bytesize && s.byte_at(data_start) == 13_u8
+    data_start += 1 if data_start < s.bytesize && s.byte_at(data_start) == 10_u8
+    if (end_idx = s.index("endstream", data_start))
+      raw = bytes[data_start, end_idx - data_start]
+      begin
+        io = IO::Memory.new(raw)
+        Compress::Zlib::Reader.open(io) { |z| out << z.gets_to_end }
+      rescue
+        # not a zlib stream — ignore
+      end
+      offset = end_idx + "endstream".size
+    else
+      break
+    end
+  end
+  out.to_s
+end
 
 describe PDF::Structure::Tag do
   it "recognises standard structure types" do
@@ -124,6 +154,73 @@ describe "Document tagging (integration)" do
     out = pdf.to_slice.map(&.chr).join
     out.should contain("/RoleMap")
     out.should contain("/Sidebar /Div")
+  end
+
+  it "emits marked content (BDC/EMC + MCID) linked via the ParentTree" do
+    pdf = PDF::Document.new
+    pdf.lang = "fr"
+    page = pdf.page { |_| }
+    pdf.struct_tree do |tree|
+      doc = tree.add(PDF::Structure::Tag::DOCUMENT)
+      h1 = doc.add(PDF::Structure::Tag::H1, title: "Titre")
+      mcid = page.marked_content("H1") do
+        page.font "Helvetica", size: 18
+        page.text "Rapport", at: {72, 760}
+      end
+      h1.add_mcid(page, mcid)
+    end
+
+    bytes = pdf.to_slice
+    out = bytes.map(&.chr).join
+    # Page is linked to the ParentTree (uncompressed dict entry).
+    out.should contain("/StructParents 0")
+    # StructTreeRoot carries the ParentTree.
+    out.should contain("/ParentTree")
+    out.should contain("/ParentTreeNextKey 1")
+    # The element references the marked content via an MCR dict.
+    out.should contain("/Type /MCR")
+    out.should contain("/MCID 0")
+    # Content-stream operators live in the (compressed) content
+    # stream — verify after inflation.
+    content = inflated_streams(bytes)
+    content.should contain("/H1 <</MCID 0>> BDC")
+    content.should contain("EMC")
+  end
+
+  it "emits artifacts as /Artifact BDC … EMC (no MCID)" do
+    pdf = PDF::Document.new
+    page = pdf.page { |p| }
+    page.artifact do
+      page.font "Helvetica", size: 8
+      page.text "en-tête", at: {72, 800}
+    end
+    content = inflated_streams(pdf.to_slice)
+    content.should contain("/Artifact BDC")
+    content.should contain("EMC")
+  end
+
+  it "assigns MCIDs sequentially per page" do
+    pdf = PDF::Document.new
+    page = pdf.page { |_| }
+    m0 = page.marked_content("P") { page.font "Helvetica", size: 12; page.text "a", at: {72, 700} }
+    m1 = page.marked_content("P") { page.text "b", at: {72, 680} }
+    m0.should eq(0)
+    m1.should eq(1)
+    page.mcid_count.should eq(2)
+  end
+
+  it "raises if a marked-content MCID is not linked to a structure element" do
+    pdf = PDF::Document.new
+    page = pdf.page { |_| }
+    pdf.struct_tree do |tree|
+      doc = tree.add(PDF::Structure::Tag::DOCUMENT)
+      # Mark content but DON'T link it → ParentTree gap → must raise.
+      page.marked_content("P") { page.font "Helvetica", size: 12; page.text "orphan", at: {72, 700} }
+      doc.add(PDF::Structure::Tag::P) # element without the mcid link
+    end
+    expect_raises(Exception, /not linked to any structure element/) do
+      pdf.to_slice
+    end
   end
 
   it "produces a structurally valid PDF (round-trips through the reader)" do

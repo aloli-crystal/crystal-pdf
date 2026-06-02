@@ -91,8 +91,68 @@ module PDF
           root_dict["RoleMap"] = rm
         end
 
+        # Build the /ParentTree — a number tree mapping each page's
+        # /StructParents index to an array (indexed by MCID) of the
+        # structure elements that own each marked-content sequence.
+        build_parent_tree(document, root_dict)
+
         document.objects << Objects::Indirect.new(root_id, root_dict)
         root_ref
+      end
+
+      # Builds `/ParentTree` and `/ParentTreeNextKey` on `root_dict`
+      # from the marked-content leaves recorded on the elements.
+      private def build_parent_tree(document : Document, root_dict : Objects::Dictionary) : Nil
+        # Collect, per page, MCID → owning element reference.
+        owners = {} of Page => Hash(Int32, Objects::Reference)
+        collect_mcid_owners(@roots, owners)
+
+        # Pages that carry marked content, ordered by their assigned
+        # /StructParents index (set in Document#finalize!).
+        indexed = document.pages.compact_map do |page|
+          if idx = page.struct_parents_index
+            {idx, page}
+          end
+        end
+        return if indexed.empty? # no marked content anywhere → no ParentTree
+        indexed.sort_by! { |(idx, _page)| idx }
+
+        nums = Objects::Array.new
+        max_key = -1
+        indexed.each do |(idx, page)|
+          mcid_map = owners[page]? || {} of Int32 => Objects::Reference
+
+          arr = Objects::Array.new
+          (0...page.mcid_count).each do |mcid|
+            ref = mcid_map[mcid]? ||
+                  raise "StructTree : MCID #{mcid} on a page is not linked to any structure element (call StructElem#add_mcid for every marked_content)"
+            arr << ref
+          end
+
+          nums << Objects::Number.new(idx)
+          nums << arr
+          max_key = idx if idx > max_key
+        end
+
+        return if max_key < 0
+
+        parent_tree = Objects::Dictionary.new
+        parent_tree["Nums"] = nums
+        root_dict["ParentTree"] = parent_tree
+        root_dict["ParentTreeNextKey"] = Objects::Number.new(max_key + 1)
+      end
+
+      # Walks the tree collecting, per page, a map MCID → element ref.
+      private def collect_mcid_owners(elems : Array(StructElem), owners : Hash(Page, Hash(Int32, Objects::Reference))) : Nil
+        elems.each do |elem|
+          unless elem.mcids.empty?
+            self_ref = Objects::Reference.new(elem.pdf_object_id.not_nil!)
+            elem.mcids.each do |(page, mcid)|
+              (owners[page] ||= {} of Int32 => Objects::Reference)[mcid] = self_ref
+            end
+          end
+          collect_mcid_owners(elem.children, owners)
+        end
       end
 
       # First pass : assign an object ID to every element (DFS order).

@@ -654,11 +654,29 @@ module PDF
       # Finalize each page (creates content streams, registers resources)
       @pages.each(&.finalize!)
 
+      # Assign /StructParents indices to pages carrying marked content,
+      # BEFORE the page dicts are built, so they can reference the
+      # document ParentTree (Tagged PDF, palier 0.7.1).
+      assign_struct_parents
+
       # Build the pages tree
       pages_root
 
       # Build the catalog
       catalog
+    end
+
+    # Assigns a contiguous /StructParents index to every page that
+    # carries marked content. No-op for untagged documents. The same
+    # indices are read back by `StructTree#build_parent_tree`.
+    private def assign_struct_parents : Nil
+      return unless tagged?
+      counter = 0
+      @pages.each do |page|
+        next unless page.marked_content?(used: true)
+        page.struct_parents_index = counter
+        counter += 1
+      end
     end
 
     private def build_catalog : Objects::Indirect
