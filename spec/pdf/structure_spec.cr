@@ -223,6 +223,29 @@ describe "Document tagging (integration)" do
     end
   end
 
+  it "tags content in one call via Page#tag (marked_content + add_mcid)" do
+    pdf = PDF::Document.new
+    pdf.lang = "fr"
+    page = pdf.page { |_| }
+    pdf.struct_tree do |tree|
+      doc = tree.add(PDF::Structure::Tag::DOCUMENT)
+      h1 = doc.add(PDF::Structure::Tag::H1, title: "Titre")
+      mcid = page.tag(h1) do
+        page.font "Helvetica", size: 18
+        page.text "Titre", at: {72, 760}
+      end
+      mcid.should eq(0)
+      # The element is now linked to the marked content.
+      h1.mcids.size.should eq(1)
+    end
+
+    bytes = pdf.to_slice
+    out = bytes.map(&.chr).join
+    out.should contain("/StructParents 0")
+    out.should contain("/Type /MCR")
+    inflated_streams(bytes).should contain("/H1 <</MCID 0>> BDC")
+  end
+
   it "produces a structurally valid PDF (round-trips through the reader)" do
     pdf = PDF::Document.new
     pdf.lang = "fr"

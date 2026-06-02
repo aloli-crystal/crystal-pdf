@@ -166,6 +166,30 @@ module PDF
       mcid
     end
 
+    # Tagging DSL (palier 0.7.2) — fuses `marked_content` and
+    # `StructElem#add_mcid` into one call : draws the block's content
+    # inside a marked-content sequence tagged with the element's role,
+    # and links the resulting MCID back to that element. Returns the
+    # MCID.
+    #
+    # ```
+    # pdf.struct_tree do |tree|
+    #   doc = tree.add(PDF::Structure::Tag::DOCUMENT)
+    #   h1 = doc.add(PDF::Structure::Tag::H1, title: "Titre")
+    #   page.tag(h1) do
+    #     page.font "Helvetica", size: 20
+    #     page.text "Titre", at: {72, 760}
+    #   end
+    # end
+    # ```
+    def tag(elem : Structure::StructElem, &) : Int32
+      mcid = marked_content(elem.type) do
+        yield
+      end
+      elem.add_mcid(self, mcid)
+      mcid
+    end
+
     # Wraps the content drawn inside the block as an *artifact* —
     # content outside the logical structure (page headers/footers,
     # decorative rules, backgrounds). PDF/UA requires every piece of

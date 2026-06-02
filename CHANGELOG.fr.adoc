@@ -7,6 +7,33 @@ Toutes les évolutions notables de pdf sont consignées ici. Le
 format suit https://keepachangelog.com/fr/1.1.0/[Keep a Changelog] et
 le versionnage respecte https://semver.org/lang/fr/[SemVer].
 
+== v0.7.2 — 2026-06-02 — DSL de tagging Tagged PDF (J2, palier 3/4)
+
+=== Ajouté
+
+* **`Page#tag(elem) { … }`** — fusionne `marked_content` et
+  `StructElem#add_mcid` en un seul appel : dessine le contenu du
+  bloc dans une séquence de marked content taguée avec le rôle de
+  l'élément, et relie le MCID obtenu à cet élément. Supprime le
+  boilerplate en deux étapes du palier 0.7.1.
++
+[source,crystal]
+----
+h1 = doc.add(PDF::Structure::Tag::H1, title: "Titre")
+page.tag(h1) do
+  page.font "Helvetica", size: 20
+  page.text "Titre", at: {72, 760}
+end
+----
+
+* `examples/tagged_structure.cr` mis à jour vers la forme en un appel.
+
+=== Pas encore (palier suivant)
+
+* **0.7.3** : helpers de tagging de tables (TR/TH/TD), raffinements
+  RoleMap/ClassMap, et un POC sur des documents AsciiDoc réels avant
+  de geler l'API J2.
+
 == v0.7.1 — 2026-06-02 — Marked content Tagged PDF (J2, palier 2/4)
 
 Relie l'arbre de structure logique (0.7.0) au contenu réellement

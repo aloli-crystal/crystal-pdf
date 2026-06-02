@@ -30,30 +30,28 @@ pdf.struct_tree do |tree|
     page.text "ALOLI — confidentiel", at: {72, 810}
   end
 
-  # Titre principal, relié à son marked content.
+  # Titre principal. `page.tag(elem) { ... }` (palier 0.7.2) fusionne
+  # le marquage du contenu et la liaison du MCID en un seul appel.
   h1 = doc.add(PDF::Structure::Tag.heading(1), title: "Rapport d'audit")
-  mcid = page.marked_content("H1") do
+  page.tag(h1) do
     page.font "Helvetica", size: 20
     page.text "Rapport d'audit", at: {72, 780}
   end
-  h1.add_mcid(page, mcid)
 
-  # Une section : titre + paragraphe, chacun relié.
+  # Une section : titre + paragraphe.
   sect = doc.add(PDF::Structure::Tag::SECT)
 
   h2 = sect.add(PDF::Structure::Tag.heading(2), title: "Périmètre")
-  mcid = page.marked_content("H2") do
+  page.tag(h2) do
     page.font "Helvetica", size: 14
     page.text "Section 1 — Périmètre", at: {72, 740}
   end
-  h2.add_mcid(page, mcid)
 
   para = sect.add(PDF::Structure::Tag::P)
-  mcid = page.marked_content("P") do
+  page.tag(para) do
     page.font "Helvetica", size: 11
     page.text "Le présent rapport couvre le périmètre défini…", at: {72, 718}
   end
-  para.add_mcid(page, mcid)
 end
 
 output = "tagged_demo.pdf"
