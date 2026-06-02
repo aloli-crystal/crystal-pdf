@@ -7,6 +7,54 @@ All notable changes to pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v0.6.3 — 2026-06-01 — CFF subsetter (charstring collapse, palier 3/4)
+
+=== Added
+
+* **CFF subsetter** — palier 3 of the native OTF subsetting
+  trajectory. New class `PDF::Fonts::CFF::Subsetter` produces a
+  reduced CFF blob from a parsed CIDFont :
++
+[source,crystal]
+----
+subset_bytes = PDF::Fonts::CFF::Subsetter.new(cff_parser, kept_gids).subset
+----
++
+* Unused glyph charstrings are collapsed to a single `endchar`
+  byte ; kept glyphs retain their exact original bytes. GID 0
+  (`.notdef`) is always preserved.
+* The Top DICT, FD Font DICTs and Private DICTs are re-emitted with
+  patched offsets ; Charset and FDSelect are copied verbatim (GID
+  numbering is preserved, so they stay valid without remapping).
+* Local and global subroutines are copied verbatim with their
+  original indices — no renumbering — so every `callsubr` /
+  `callgsubr` in surviving charstrings stays valid.
+
+* **`PDF::Fonts::CFF::IndexWriter`** — serialises a CFF INDEX from
+  byte entries (the inverse of `CFF::Index`), choosing the smallest
+  valid `offSize`.
+
+* **BCD real encoding** in the subsetter's DICT writer, so Top DICT
+  operands like the font version (`1.004`) round-trip correctly.
+
+=== Validated against
+
+* `NotoSansCJKsc-Thin.otf` (13.5 MB CFF) subsetted to a 200-glyph
+  document : output **1.43 MB (10.4 % of original, ~90 % reduction)**
+  in 0.01 s. Re-parsing the subset succeeds, kept glyph 100 is
+  byte-identical to the source, dropped glyphs collapse to a single
+  `endchar`, and all 200 kept glyphs re-analyse cleanly.
+* 3 `IndexWriter` round-trip specs + 2 subsetter integration specs.
+
+=== Deferred
+
+* **Subr pruning.** The remaining ~10 % (mostly retained subrs) needs
+  a full Type 2 stack interpreter to renumber subrs safely — a
+  `callsubr` may consume a value pushed by a previously-called subr,
+  so the operand preceding a call cannot always be rewritten in
+  isolation. Out of scope for this palier ; the charstring collapse
+  already recovers the bulk of the size. Tracked for a later 0.6.x.
+
 == v0.6.2 — 2026-06-01 — Type 2 charstring analyser (palier 2/4)
 
 === Added

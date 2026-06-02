@@ -7,6 +7,59 @@ Toutes les évolutions notables de pdf sont consignées ici. Le
 format suit https://keepachangelog.com/fr/1.1.0/[Keep a Changelog] et
 le versionnage respecte https://semver.org/lang/fr/[SemVer].
 
+== v0.6.3 — 2026-06-01 — Subsetter CFF (collapse charstrings, palier 3/4)
+
+=== Ajouté
+
+* **Subsetter CFF** — palier 3 du subsetting OTF natif. Nouvelle
+  classe `PDF::Fonts::CFF::Subsetter` qui produit un CFF réduit à
+  partir d'une CIDFont parsée :
++
+[source,crystal]
+----
+subset_bytes = PDF::Fonts::CFF::Subsetter.new(cff_parser, kept_gids).subset
+----
++
+* Les charstrings des glyphes inutilisés sont réduits à un seul
+  octet `endchar` ; les glyphes conservés gardent leurs octets
+  d'origine exacts. Le GID 0 (`.notdef`) est toujours préservé.
+* Top DICT, Font DICTs et Private DICTs sont ré-émis avec des
+  offsets corrigés ; Charset et FDSelect sont copiés verbatim (la
+  numérotation des GID est préservée, donc ils restent valides
+  sans remapping).
+* Les sous-routines locales et globales sont copiées verbatim avec
+  leurs indices d'origine — sans renumérotation — pour que tous les
+  `callsubr` / `callgsubr` des charstrings conservés restent valides.
+
+* **`PDF::Fonts::CFF::IndexWriter`** — sérialise un INDEX CFF depuis
+  des entrées d'octets (l'inverse de `CFF::Index`), en choisissant
+  le plus petit `offSize` valide.
+
+* **Encodage BCD des réels** dans le writer de DICT du subsetter,
+  pour que les opérandes du Top DICT comme la version de fonte
+  (`1.004`) fassent un aller-retour correct.
+
+=== Validé contre
+
+* `NotoSansCJKsc-Thin.otf` (CFF de 13,5 Mo) sous-setté pour un
+  document de 200 glyphes : sortie **1,43 Mo (10,4 % de l'original,
+  ~90 % de réduction)** en 0,01 s. Le re-parsing du subset réussit,
+  le glyphe 100 conservé est byte-identique à la source, les
+  glyphes supprimés se réduisent à un `endchar`, et les 200 glyphes
+  conservés se ré-analysent proprement.
+* 3 specs aller-retour `IndexWriter` + 2 specs d'intégration du
+  subsetter.
+
+=== Reporté
+
+* **Élagage des subrs.** Les ~10 % restants (essentiellement les
+  subrs conservés) nécessitent un interpréteur Type 2 complet pour
+  renuméroter les subrs sans risque — un `callsubr` peut consommer
+  une valeur poussée par un subr appelé précédemment, donc l'opérande
+  qui précède un appel ne peut pas toujours être réécrit isolément.
+  Hors scope de ce palier ; le collapse des charstrings récupère
+  déjà l'essentiel de la taille. Suivi pour un 0.6.x ultérieur.
+
 == v0.6.2 — 2026-06-01 — Analyseur Type 2 charstring (palier 2/4)
 
 === Ajouté
