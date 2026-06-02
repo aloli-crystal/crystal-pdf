@@ -7,6 +7,59 @@ All notable changes to pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v0.7.0 — 2026-06-02 — Tagged PDF structure model (J2, palier 1/4)
+
+Opens the J2 milestone (Tagged PDF + logical structure), the shared
+prerequisite for PDF/A-2u, PDF/A-3 and PDF/UA-1.
+
+=== Added
+
+* **Logical structure object model** under `PDF::Structure` :
++
+--
+** `Tag` — the standard structure types (PDF 32000-1 § 14.8.4) :
+   grouping (`Document`, `Sect`, `Div`, `TOC`…), block (`P`,
+   `H1`-`H6`), lists (`L`, `LI`, `Lbl`, `LBody`), tables (`Table`,
+   `TR`, `TH`, `TD`…), inline (`Span`, `Link`, `Code`…),
+   illustrations (`Figure`, `Formula`, `Form`). Plus `Tag.standard?`
+   and `Tag.heading(level)`.
+** `StructElem` — a structure element node carrying `/S` and the
+   accessibility attributes `/T`, `/Alt`, `/ActualText`, `/Lang`,
+   `/E`, with fluent `add` for nesting.
+** `StructTree` — the `/StructTreeRoot` builder, with an optional
+   `/RoleMap` for custom-role → standard-role mapping. IDs are
+   pre-allocated so the circular `/P` (parent) and `/K` (kids)
+   references resolve correctly.
+--
+
+* **Document wiring** :
+** `Document#struct_tree` (and block form) exposes the tree.
+** `Document#lang=` sets the document primary language (`/Lang`).
+** `Document#tagged?` predicate.
+** The catalog gains `/StructTreeRoot` + `/MarkInfo /Marked true`
+   when the tree is non-empty, and `/Lang` when set.
+
+* **`examples/tagged_structure.cr`** — builds a Document → H1 / Sect
+  (H2 + P) / Figure(alt) tree.
+
+=== Opt-in by design
+
+Untagged documents are byte-for-byte unaffected : no
+`/StructTreeRoot`, no `/MarkInfo`. A regression spec asserts this.
+
+=== Not yet (next paliers)
+
+* **0.7.1** : marked-content operators (BDC/EMC + MCID) in page
+  content streams, and the `/ParentTree` number tree — this is what
+  ties structure elements to the actual rendered glyphs (and what a
+  PDF/UA validator ultimately checks).
+* **0.7.2** : a high-level tagging DSL (`page.tag(:h1) { … }`).
+* **0.7.3** : RoleMap/ClassMap refinements, table tagging helpers,
+  and a POC over real AsciiDoc documents before the API is frozen.
+
+So this palier builds the *scaffolding* : a valid `/StructTreeRoot`
+hierarchy that the next palier fills with content links.
+
 == v0.6.4 — 2026-06-01 — OpenType/CFF fonts usable end to end (palier 4/4)
 
 === Added

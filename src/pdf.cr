@@ -132,3 +132,6 @@ require "./pdf/embedded_file"
 
 # Interactive forms (AcroForm — PDF spec § 12.7)
 require "./pdf/acroform"
+
+# Tagged PDF logical structure (PDF spec § 14.7-14.8)
+require "./pdf/structure"

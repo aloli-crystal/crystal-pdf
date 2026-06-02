@@ -81,6 +81,15 @@ module PDF
     # default appearance `/DA`). Created lazily on first access.
     @acroform_helvetica_ref : Objects::Reference?
 
+    # Logical structure tree (Tagged PDF). Nil until `#struct_tree`
+    # is called. Emitted in the catalog only if it holds at least
+    # one element.
+    @struct_tree : Structure::StructTree?
+
+    # Document primary language as a BCP-47 tag (`/Lang`, e.g. "fr"
+    # or "en-US"). Recommended for PDF/UA. Nil = not declared.
+    property lang : String?
+
     # File specifications for attached files (PDF/A-3, Factur-X).
     # Populated via `Document#attach_file`.
     @attached_files : Array(FileSpec) = [] of FileSpec
@@ -303,6 +312,36 @@ module PDF
     def acroform? : Bool
       if f = @acroform
         !f.fields.empty?
+      else
+        false
+      end
+    end
+
+    # Returns the document logical structure tree (Tagged PDF),
+    # creating it on first access. Yields it to the block if given.
+    #
+    # ```
+    # pdf.struct_tree do |tree|
+    #   doc = tree.add(PDF::Structure::Tag::DOCUMENT)
+    #   doc.add(PDF::Structure::Tag::H1, title: "Titre")
+    #   doc.add(PDF::Structure::Tag::P)
+    # end
+    # ```
+    def struct_tree(&) : Structure::StructTree
+      tree = (@struct_tree ||= Structure::StructTree.new)
+      yield tree
+      tree
+    end
+
+    # ditto
+    def struct_tree : Structure::StructTree
+      @struct_tree ||= Structure::StructTree.new
+    end
+
+    # `true` if the document has a non-empty logical structure tree.
+    def tagged? : Bool
+      if t = @struct_tree
+        !t.empty?
       else
         false
       end
@@ -700,6 +739,22 @@ module PDF
         # one (named destinations). For the MVP we replace ; named
         # destinations live under /Dests, not /Names.
         dict["Names"] = embedded_files
+      end
+
+      # Add /Lang (document primary language) when declared. Useful
+      # on its own ; required for PDF/UA conformance.
+      if l = @lang
+        dict["Lang"] = Objects::Str.new(l)
+      end
+
+      # Add the logical structure tree (Tagged PDF) when non-empty.
+      # /StructTreeRoot points at the element hierarchy ; /MarkInfo
+      # /Marked true signals that the content is (to be) tagged.
+      if (tree = @struct_tree) && !tree.empty?
+        dict["StructTreeRoot"] = tree.finalize!(self)
+        mark_info = Objects::Dictionary.new
+        mark_info["Marked"] = Objects::Boolean.new(true)
+        dict["MarkInfo"] = mark_info
       end
 
       # Add XMP metadata

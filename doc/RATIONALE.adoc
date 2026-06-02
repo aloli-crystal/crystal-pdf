@@ -465,7 +465,21 @@ doc.tag(:figure, alt: "Logo ALOLI") { doc.image "logo.png" }
 Critère de sortie : un document généré avec l'API de tagging passe
 la validation structurelle de pac2024 (PDF Accessibility Checker).
 
-Cible version `pdf` : `0.7.0`.
+Cible version `pdf` : `0.7.0` (ouverture) à `0.7.3` (clôture J2).
+
+Découpage en paliers (comme le subsetting CFF) :
+
+* ✅ **0.7.0 — Modèle de structure** (livré 2026-06-02) : `Pdf::Structure`
+  (`Tag`, `StructElem`, `StructTree`), câblage catalog
+  (`/StructTreeRoot`, `/MarkInfo /Marked true`, `/Lang`), `/RoleMap`.
+  Opt-in (zéro impact sur les PDF non taggés). L'ossature : une
+  hiérarchie valide qui ne pointe pas encore sur le contenu rendu.
+* **0.7.1 — Marked content** : opérateurs BDC/EMC + MCID dans les
+  content streams, `/ParentTree` (number tree MCID → StructElem).
+  C'est ce qui relie l'arbre aux glyphes — le cœur du Tagged PDF.
+* **0.7.2 — DSL de tagging** : `page.tag(:h1) { ... }` haut niveau.
+* **0.7.3 — Tables + POC** : helpers TR/TH/TD, RoleMap/ClassMap, et
+  POC sur 3 documents AsciiDoc réels avant gel d'API.
 
 [NOTE]
 ====
