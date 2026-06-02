@@ -7,6 +7,24 @@ All notable changes to pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v0.7.6 — 2026-06-02 — PDF/A-valid sRGB output-intent profile
+
+=== Fixed
+
+* **`OutputIntent.srgb` now uses a display-class ("mntr") sRGB
+  profile**, not the sRGB v4 *preference* profile (Device Class
+  "spac"). veraPDF 1.30.1 rejected the preference profile in an
+  OutputIntent : ISO 19005-2 § 6.2.3 requires the DestOutputProfile
+  to be class "prtr" or "mntr". Real finding from running veraPDF
+  against pdf-a output.
+
+=== Added
+
+* Bundled `sRGB2014.icc` (ICC v2, "mntr" class, 3 KB, from the ICC
+  registry) and `ColorSpaces::ICCBased.srgb_display`. The sRGB v4
+  preference profile is kept (`srgb_v4`) as a working colour space,
+  but is no longer used for output intents.
+
 == v0.7.5 — 2026-06-02 — PDF/UA hooks (for pdf-ua J4)
 
 === Added

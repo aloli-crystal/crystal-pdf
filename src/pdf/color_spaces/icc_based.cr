@@ -33,8 +33,16 @@ module PDF
     # icc = PDF::ColorSpaces::ICCBased.new(File.read("...").to_slice)
     # ```
     class ICCBased
-      # Bundled sRGB v4 profile (ICC release 2007-07-25, CC0).
+      # Bundled sRGB v4 profile (ICC release 2007-07-25, CC0). This
+      # is a *preference* profile (Device Class "spac") — fine as a
+      # working RGB space, but NOT valid as a PDF/A OutputIntent
+      # DestOutputProfile, which requires class "prtr" or "mntr".
       SRGB_V4_PATH = "#{__DIR__}/../data/icc/sRGB_v4_ICC_preference.icc"
+
+      # Bundled sRGB display profile (sRGB2014, ICC v2, Device Class
+      # "mntr"). This is the correct profile for a PDF/A OutputIntent
+      # (veraPDF ISO 19005-2 § 6.2.3 requires "prtr"/"mntr" class).
+      SRGB_DISPLAY_PATH = "#{__DIR__}/../data/icc/sRGB2014.icc"
 
       # Bundled CMYK profile : Coated FOGRA39 / ISOcoated_v2_eci
       # (ECI release 2009, free for use).
@@ -61,9 +69,16 @@ module PDF
         new(File.read(path).to_slice)
       end
 
-      # Returns the bundled sRGB v4 ICC profile.
+      # Returns the bundled sRGB v4 ICC profile (preference / "spac"
+      # class). For a PDF/A OutputIntent use `srgb_display` instead.
       def self.srgb_v4 : ICCBased
         from_file(SRGB_V4_PATH)
+      end
+
+      # Returns the bundled sRGB display profile (sRGB2014, "mntr"
+      # class) — the one valid as a PDF/A OutputIntent profile.
+      def self.srgb_display : ICCBased
+        from_file(SRGB_DISPLAY_PATH)
       end
 
       # Returns the bundled FOGRA39 CMYK ICC profile.

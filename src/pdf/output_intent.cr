@@ -80,9 +80,12 @@ module PDF
       new(
         output_condition_identifier: "sRGB",
         registry_name: "http://www.color.org",
-        info: "sRGB v4 ICC preference (perceptual)",
+        info: "sRGB IEC61966-2.1 (sRGB2014 display profile)",
         output_condition: "sRGB IEC61966-2-1:1999",
-        dest_output_profile: ColorSpaces::ICCBased.srgb_v4,
+        # Use the "mntr"-class display profile : PDF/A OutputIntent
+        # rejects the "spac"-class sRGB v4 preference profile
+        # (ISO 19005-2 § 6.2.3).
+        dest_output_profile: ColorSpaces::ICCBased.srgb_display,
       )
     end
 
