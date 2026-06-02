@@ -25,8 +25,12 @@ module PDF
       # The TrueType parser
       getter parser : TrueType::Parser
 
-      # The subsetter
-      @subsetter : TrueType::Subsetter
+      # The TrueType subsetter (glyf-based). Nil for CFF/OTF fonts,
+      # which use the CFF subsetter instead.
+      @subsetter : TrueType::Subsetter?
+
+      # The CFF parser (OpenType/CFF fonts only). Nil for glyf fonts.
+      @cff_parser : CFF::Parser?
 
       # Characters used in this font
       @used_chars : Set(Char)
@@ -34,47 +38,46 @@ module PDF
       # Cache for subset font data
       @subset_data : Bytes?
 
-      # Raised when a font file is recognized (valid sfnt header) but
-      # its outline format is not supported by this shard. Currently
-      # only TrueType outlines (`glyf` table) are handled ; OpenType
-      # fonts with CFF/CFF2 outlines (`.otf`) are detected and rejected
-      # here rather than failing later during subsetting with a less
-      # helpful "Missing required table: glyf" error.
+      # Raised when a font file has a valid sfnt header but an outline
+      # format this shard cannot handle (neither `glyf` TrueType nor
+      # `CFF ` OpenType). With CFF support (palier 0.6.x) this is now
+      # rare — only exotic sfnt flavours hit it.
       class UnsupportedFontFormat < Exception
       end
 
       def initialize(@parser : TrueType::Parser)
-        unless @parser.truetype?
-          raise UnsupportedFontFormat.new(unsupported_message)
-        end
         @subset_prefix = generate_subset_prefix
-        @subsetter = TrueType::Subsetter.new(@parser)
         @used_chars = Set(Char).new
         @subset_data = nil
+
+        if @parser.truetype?
+          @subsetter = TrueType::Subsetter.new(@parser)
+          @cff_parser = nil
+        elsif @parser.cff?
+          # OpenType/CFF (.otf) — parse the embedded CFF table and
+          # subset it natively (palier 0.6.x of the ISO trajectory).
+          cff_bytes = @parser.table_data("CFF ") ||
+                      raise UnsupportedFontFormat.new("OpenType font declares CFF outlines but has no 'CFF ' table")
+          @cff_parser = CFF::Parser.new(cff_bytes)
+          @subsetter = nil
+        else
+          raise UnsupportedFontFormat.new(unsupported_message)
+        end
       end
 
-      # Builds a user-actionable error message for the unsupported
-      # font format detected on `@parser`. Kept as a private helper
-      # so the constructor stays readable.
+      # `true` for OpenType/CFF (.otf) fonts, `false` for glyf-based
+      # TrueType. Drives the PDF emission path (CIDFontType0 +
+      # FontFile3 vs CIDFontType2 + FontFile2).
+      def cff? : Bool
+        !@cff_parser.nil?
+      end
+
+      # Builds a user-actionable error message for a font whose sfnt
+      # flavour is neither glyf TrueType nor OpenType/CFF (both of
+      # which are supported). Reached only for exotic flavours.
       private def unsupported_message : String
-        if @parser.cff?
-          <<-MSG
-          OpenType font with CFF outlines (.otf) is not yet supported.
-
-          Current support : TrueType outlines (.ttf, .ttc with glyf table).
-          Detected sfnt version : 'OTTO' (CFF/CFF2).
-
-          Workarounds :
-            * Convert the .otf to .ttf with fontforge :
-                fontforge -lang=ff -c 'Open($1); Generate($2)' input.otf output.ttf
-            * For Noto Sans CJK, use the .ttc TrueType Collection variant
-              instead of the .otf (Google distributes both).
-
-          Native CFF support is planned for J1+ ; see doc/RATIONALE.adoc.
-          MSG
-        else
-          "Unsupported sfnt version. Only TrueType outlines (glyf table) are handled by this shard."
-        end
+        "Unsupported sfnt flavour. This shard handles TrueType outlines " \
+        "(glyf) and OpenType/CFF (CFF ) ; the loaded font has neither."
       end
 
       # Load a TrueType font from a file path
@@ -103,7 +106,9 @@ module PDF
       def use(char : Char) : Nil
         return if @used_chars.includes?(char)
         @used_chars << char
-        @subsetter.use(char)
+        # The glyf subsetter tracks per-char glyphs ; the CFF path
+        # derives kept GIDs lazily from @used_chars at subset time.
+        @subsetter.try(&.use(char))
         @subset_data = nil # Invalidate cache
       end
 
@@ -132,9 +137,27 @@ module PDF
         (width.to_f64 * 1000 / @parser.units_per_em).round.to_i32
       end
 
-      # Get the subset font data
+      # Get the subset font data. For glyf fonts this is a subsetted
+      # TrueType sfnt ; for CFF fonts it is a subsetted bare CFF blob
+      # (to be embedded as FontFile3 / CIDFontType0C).
       def subset_data : Bytes
-        @subset_data ||= @subsetter.subset
+        @subset_data ||= begin
+          if cff_parser = @cff_parser
+            kept = kept_glyph_ids
+            CFF::Subsetter.new(cff_parser, kept).subset
+          else
+            @subsetter.not_nil!.subset
+          end
+        end
+      end
+
+      # Original glyph IDs to retain in a CFF subset, derived from
+      # the characters actually used in the document. GID 0 is added
+      # by the subsetter itself.
+      private def kept_glyph_ids : Set(Int32)
+        kept = Set(Int32).new
+        @used_chars.each { |c| kept << @parser.glyph_id(c).to_i32 }
+        kept
       end
 
       # Returns the Type 0 (composite) font dictionary
@@ -153,11 +176,13 @@ module PDF
         dict
       end
 
-      # Returns the CIDFont dictionary
+      # Returns the CIDFont dictionary. CFF fonts use CIDFontType0
+      # (the descendant of a Type0 font whose FontFile3 carries a
+      # bare CFF), glyf fonts use CIDFontType2.
       def cid_font_dictionary : Objects::Dictionary
         dict = Objects::Dictionary.new
         dict["Type"] = Objects::Name::FONT
-        dict["Subtype"] = Objects::Name.new("CIDFontType2")
+        dict["Subtype"] = Objects::Name.new(cff? ? "CIDFontType0" : "CIDFontType2")
         dict["BaseFont"] = Objects::Name.new(name)
 
         # CIDSystemInfo
@@ -212,14 +237,34 @@ module PDF
         dict
       end
 
-      # Returns the font file stream (subset TrueType data)
+      # Returns the font file stream (subset font data). For glyf
+      # fonts this is FontFile2 data with /Length1 ; for CFF fonts
+      # it is FontFile3 data with /Subtype /CIDFontType0C and no
+      # /Length1 (which only applies to Type1/TrueType programs).
       def font_file_stream : Objects::Stream
         data = subset_data
         stream = Objects::Stream.new
         stream.data = data
-        stream["Length1"] = Objects::Number.new(data.size)
+        if cff?
+          stream["Subtype"] = Objects::Name.new("CIDFontType0C")
+        else
+          stream["Length1"] = Objects::Number.new(data.size)
+        end
         stream.add_filter(Filters::Flate.new)
         stream
+      end
+
+      # The FontDescriptor key under which the embedded font program
+      # is referenced : `FontFile3` for CFF, `FontFile2` for glyf.
+      def font_file_key : String
+        cff? ? "FontFile3" : "FontFile2"
+      end
+
+      # `true` when the CIDToGIDMap should be the name `/Identity`
+      # rather than an explicit stream. The CFF subsetter preserves
+      # GID numbering, so CID (original GID) maps to itself.
+      def uses_identity_cid_to_gid? : Bool
+        cff?
       end
 
       # Returns the ToUnicode CMap stream
@@ -258,7 +303,7 @@ module PDF
         io = IO::Memory.new
 
         (0_u16..max_cid).each do |cid|
-          new_gid = @subsetter.new_glyph_id(cid)
+          new_gid = @subsetter.not_nil!.new_glyph_id(cid)
           io.write_byte(((new_gid >> 8) & 0xFF).to_u8)
           io.write_byte((new_gid & 0xFF).to_u8)
         end

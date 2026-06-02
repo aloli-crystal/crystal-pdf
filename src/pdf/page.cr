@@ -1410,17 +1410,14 @@ module PDF
           next
         end
 
-        # Create font file stream (subset font data)
+        # Create font file stream (subset font data) — FontFile2 for
+        # glyf TrueType, FontFile3 (CIDFontType0C) for OpenType/CFF.
         font_file_stream = ttf_font.font_file_stream
         font_file_obj = @document.register_object(font_file_stream)
 
-        # Create CIDToGIDMap stream (maps original GIDs to subset GIDs)
-        cid_to_gid_map = ttf_font.cid_to_gid_map_stream
-        cid_to_gid_obj = @document.register_object(cid_to_gid_map)
-
         # Create font descriptor
         descriptor = ttf_font.font_descriptor
-        descriptor["FontFile2"] = font_file_obj.reference
+        descriptor[ttf_font.font_file_key] = font_file_obj.reference
         descriptor_obj = @document.register_object(descriptor)
 
         # Create ToUnicode CMap
@@ -1430,7 +1427,17 @@ module PDF
         # Create CIDFont dictionary
         cid_font = ttf_font.cid_font_dictionary
         cid_font["FontDescriptor"] = descriptor_obj.reference
-        cid_font["CIDToGIDMap"] = cid_to_gid_obj.reference
+
+        # CIDToGIDMap : the CFF subsetter preserves GID numbering, so
+        # the map is the identity ; the glyf subsetter renumbers, so
+        # it needs an explicit stream.
+        if ttf_font.uses_identity_cid_to_gid?
+          cid_font["CIDToGIDMap"] = Objects::Name.new("Identity")
+        else
+          cid_to_gid_map = ttf_font.cid_to_gid_map_stream
+          cid_to_gid_obj = @document.register_object(cid_to_gid_map)
+          cid_font["CIDToGIDMap"] = cid_to_gid_obj.reference
+        end
         cid_font_obj = @document.register_object(cid_font)
 
         # Create Type0 font dictionary

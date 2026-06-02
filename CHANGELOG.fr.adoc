@@ -7,6 +7,66 @@ Toutes les évolutions notables de pdf sont consignées ici. Le
 format suit https://keepachangelog.com/fr/1.1.0/[Keep a Changelog] et
 le versionnage respecte https://semver.org/lang/fr/[SemVer].
 
+== v0.6.4 — 2026-06-01 — Fontes OpenType/CFF utilisables de bout en bout (palier 4/4)
+
+=== Ajouté
+
+* **Les fontes `.otf` (OpenType/CFF) peuvent désormais être
+  chargées, sous-settées et embarquées** — dernier palier du
+  subsetting CFF natif. `load_font` ne lève plus
+  `UnsupportedFontFormat` pour un `.otf` ; à la place la table
+  `CFF ` embarquée est parsée, sous-settée (palier 0.6.3) et écrite
+  dans le PDF comme fonte descendante `CIDFontType0` avec un
+  programme `FontFile3` de `/Subtype /CIDFontType0C`.
++
+[source,crystal]
+----
+pdf = PDF::Document.new
+font = pdf.load_font("NotoSansCJKsc-Thin.otf")  # erreur avant 0.6.4
+pdf.page(:a4) do |page|
+  page.font font, size: 24
+  page.text "中文字体测试", at: {72, 750}
+end
+pdf.save("cjk.pdf")
+----
+
+=== Modifié
+
+* `PDF::Fonts::TrueTypeFont` gère désormais les deux formats de
+  contours :
+** TrueType glyf → `CIDFontType2` + `FontFile2` + stream
+   `CIDToGIDMap` explicite (GID renumérotés), comme avant.
+** OpenType/CFF → `CIDFontType0` + `FontFile3` (`CIDFontType0C`) +
+   `/CIDToGIDMap /Identity` (le subsetter CFF préserve la
+   numérotation des GID, donc le map est l'identité).
+* Nouveaux prédicats publics `#cff?`, `#uses_identity_cid_to_gid?`
+  et helper `#font_file_key` pilotent le chemin d'émission.
+  `#encode_text` est inchangé — il émet déjà les GID originaux, ce
+  qu'attend exactement un CIDToGIDMap identité.
+* Les métriques (`glyph_id`, `advance_width`, `units_per_em`, bbox,
+  ascent/descent, etc.) sont lues depuis les mêmes tables sfnt
+  (`head`, `hhea`, `hmtx`, `cmap`, `OS/2`) que les fontes OpenType
+  portent aussi — aucun code de métrique spécifique CFF nécessaire.
+
+=== Validé contre
+
+* `NotoSansCJKsc-Thin.otf` : un court texte CJK rend un PDF de
+  1,18 Mo (vs fonte source de 15 Mo), `qpdf --check` propre, et
+  `pdftotext` extrait le texte original (« 中文字体测试 »,
+  « ALOLI — 日本語 한국어 ») — ce qui confirme le rendu ET le
+  CMap ToUnicode.
+* 3 nouvelles specs end-to-end (chargement, émission + structure,
+  re-parsing du subset).
+
+=== Trajectoire
+
+Ceci clôt l'effort de subsetting CFF natif en quatre paliers
+(0.6.1 parser → 0.6.2 analyseur → 0.6.3 subsetter → 0.6.4
+embedding). Le chargement paresseux des CJK dans
+`crystal-asciidoctor-pdf` peut maintenant s'appuyer directement sur
+les fontes Noto `.otf`. L'élagage des subrs (les ~10 % restants de
+taille) reste reporté — voir l'entrée 0.6.3.
+
 == v0.6.3 — 2026-06-01 — Subsetter CFF (collapse charstrings, palier 3/4)
 
 === Ajouté
