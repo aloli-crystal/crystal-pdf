@@ -246,6 +246,36 @@ describe "Document tagging (integration)" do
     inflated_streams(bytes).should contain("/H1 <</MCID 0>> BDC")
   end
 
+  it "supports table structure (Table > TR > TH/TD) via the generic model" do
+    pdf = PDF::Document.new
+    page = pdf.page { |_| }
+    pdf.struct_tree do |tree|
+      doc = tree.add(PDF::Structure::Tag::DOCUMENT)
+      table = doc.add(PDF::Structure::Tag::TABLE)
+
+      header = table.add(PDF::Structure::Tag::TR)
+      th1 = header.add(PDF::Structure::Tag::TH)
+      th2 = header.add(PDF::Structure::Tag::TH)
+
+      row = table.add(PDF::Structure::Tag::TR)
+      td1 = row.add(PDF::Structure::Tag::TD)
+      td2 = row.add(PDF::Structure::Tag::TD)
+
+      [th1, th2, td1, td2].each_with_index do |cell, i|
+        page.tag(cell) do
+          page.font "Helvetica", size: 10
+          page.text "cell #{i}", at: {72 + i*60, 700}
+        end
+      end
+    end
+
+    out = pdf.to_slice.map(&.chr).join
+    out.should contain("/S /Table")
+    out.should contain("/S /TR")
+    out.should contain("/S /TH")
+    out.should contain("/S /TD")
+  end
+
   it "produces a structurally valid PDF (round-trips through the reader)" do
     pdf = PDF::Document.new
     pdf.lang = "fr"
