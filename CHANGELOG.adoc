@@ -7,6 +7,16 @@ All notable changes to pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v0.7.4 — 2026-06-02 — Expose non-embedded fonts (for pdf-a J3)
+
+=== Added
+
+* **`Document#standard_type1_font_names`** — returns the names of
+  the standard-14 Type1 fonts (Helvetica, Times-Roman, Courier…)
+  registered in the document. These are *not* embedded, which PDF/A
+  forbids ; the `pdf-a` shard (J3) reads this to flag non-embedded
+  fonts. Purely introspective — no behaviour change.
+
 == v0.7.3 — 2026-06-02 — XMP PDF/A identification hook (enables J3)
 
 === Added

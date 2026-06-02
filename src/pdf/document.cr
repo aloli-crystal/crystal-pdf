@@ -267,6 +267,14 @@ module PDF
       @truetype_fonts
     end
 
+    # Names of the standard-14 Type1 fonts registered in this document
+    # (Helvetica, Times-Roman, Courier…). These are NOT embedded — the
+    # viewer substitutes a system font — which PDF/A forbids. The
+    # `pdf-a` shard uses this to flag non-embedded fonts.
+    def standard_type1_font_names : Array(String)
+      @fonts.keys
+    end
+
     # Adds a named destination to the document.
     #
     # Named destinations allow internal links (from annotations or outline items)

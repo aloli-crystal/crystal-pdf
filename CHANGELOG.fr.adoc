@@ -7,6 +7,17 @@ Toutes les évolutions notables de pdf sont consignées ici. Le
 format suit https://keepachangelog.com/fr/1.1.0/[Keep a Changelog] et
 le versionnage respecte https://semver.org/lang/fr/[SemVer].
 
+== v0.7.4 — 2026-06-02 — Exposer les polices non embarquées (pour pdf-a J3)
+
+=== Ajouté
+
+* **`Document#standard_type1_font_names`** — retourne les noms des
+  polices Type1 standard-14 (Helvetica, Times-Roman, Courier…)
+  enregistrées dans le document. Elles ne sont *pas* embarquées, ce
+  que PDF/A interdit ; le shard `pdf-a` (J3) lit cette liste pour
+  signaler les polices non embarquées. Purement introspectif —
+  aucun changement de comportement.
+
 == v0.7.3 — 2026-06-02 — Hook d'identification XMP PDF/A (prépare J3)
 
 === Ajouté
