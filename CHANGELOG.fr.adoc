@@ -7,6 +7,22 @@ Toutes les évolutions notables de pdf sont consignées ici. Le
 format suit https://keepachangelog.com/fr/1.1.0/[Keep a Changelog] et
 le versionnage respecte https://semver.org/lang/fr/[SemVer].
 
+== v0.7.5 — 2026-06-02 — Hooks PDF/UA (pour pdf-ua J4)
+
+=== Ajouté
+
+* **`Document#pdfua_part`** — quand défini (1 = PDF/UA-1), le flux
+  XMP émet `<pdfuaid:part>` dans le namespace d'identification PDF/UA
+  de l'AIIM. Le marqueur obligatoire qui déclare un fichier PDF/UA.
+* **`Document#display_doc_title`** — quand true, le catalog émet
+  `/ViewerPreferences << /DisplayDocTitle true >>`, pour que les
+  visualiseurs affichent le titre du document (pas le nom de
+  fichier) dans la barre de titre — exigence PDF/UA.
+
+Ces hooks sont consommés par le nouveau shard `aloli-crystal/pdf-ua`
+(J4). Seul, `pdf` n'impose aucune contrainte PDF/UA — il enregistre
+les déclarations. Les documents non-UA sont inchangés.
+
 == v0.7.4 — 2026-06-02 — Exposer les polices non embarquées (pour pdf-a J3)
 
 === Ajouté

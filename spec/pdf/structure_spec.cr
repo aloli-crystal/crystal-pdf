@@ -293,6 +293,27 @@ describe "Document tagging (integration)" do
     out.should_not contain("<pdfaid:part>")
   end
 
+  it "emits PDF/UA identification and ViewerPreferences when set" do
+    pdf = PDF::Document.new
+    pdf.title = "Doc accessible"
+    pdf.lang = "fr"
+    pdf.pdfua_part = 1
+    pdf.display_doc_title = true
+    pdf.page { |_| }
+    out = pdf.to_slice.map(&.chr).join
+    out.should contain("<pdfuaid:part>1</pdfuaid:part>")
+    out.should contain("/ViewerPreferences")
+    out.should contain("/DisplayDocTitle true")
+  end
+
+  it "omits ViewerPreferences and pdfuaid when not a PDF/UA document" do
+    pdf = PDF::Document.new
+    pdf.page { |_| }
+    out = pdf.to_slice.map(&.chr).join
+    out.should_not contain("<pdfuaid:part>")
+    out.should_not contain("/ViewerPreferences")
+  end
+
   it "produces a structurally valid PDF (round-trips through the reader)" do
     pdf = PDF::Document.new
     pdf.lang = "fr"

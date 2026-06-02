@@ -96,6 +96,15 @@ module PDF
     property pdfa_part : Int32?
     property pdfa_conformance : String?
 
+    # PDF/UA conformance identification (XMP `pdfuaid:part`). Set by
+    # the `pdf-ua` shard (1 = PDF/UA-1). Nil = not a PDF/UA document.
+    property pdfua_part : Int32?
+
+    # When true, the catalog emits `/ViewerPreferences
+    # << /DisplayDocTitle true >>` so viewers show the document title
+    # (not the file name) in the title bar — a PDF/UA requirement.
+    property display_doc_title : Bool = false
+
     # File specifications for attached files (PDF/A-3, Factur-X).
     # Populated via `Document#attach_file`.
     @attached_files : Array(FileSpec) = [] of FileSpec
@@ -779,6 +788,14 @@ module PDF
         dict["Lang"] = Objects::Str.new(l)
       end
 
+      # Add /ViewerPreferences /DisplayDocTitle true when requested
+      # (PDF/UA : the title bar must show the document title).
+      if @display_doc_title
+        vp = Objects::Dictionary.new
+        vp["DisplayDocTitle"] = Objects::Boolean.new(true)
+        dict["ViewerPreferences"] = vp
+      end
+
       # Add the logical structure tree (Tagged PDF) when non-empty.
       # /StructTreeRoot points at the element hierarchy ; /MarkInfo
       # /Marked true signals that the content is (to be) tagged.
@@ -798,7 +815,8 @@ module PDF
         creator: @creator,
         producer: @producer,
         pdfa_part: @pdfa_part,
-        pdfa_conformance: @pdfa_conformance
+        pdfa_conformance: @pdfa_conformance,
+        pdfua_part: @pdfua_part
       )
       xmp_obj = register_object(xmp_stream)
       dict["Metadata"] = xmp_obj.reference

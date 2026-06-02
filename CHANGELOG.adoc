@@ -7,6 +7,22 @@ All notable changes to pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v0.7.5 — 2026-06-02 — PDF/UA hooks (for pdf-ua J4)
+
+=== Added
+
+* **`Document#pdfua_part`** — when set (1 = PDF/UA-1), the XMP stream
+  emits `<pdfuaid:part>` in the AIIM PDF/UA identification namespace.
+  The mandatory marker that declares a file as PDF/UA.
+* **`Document#display_doc_title`** — when true, the catalog emits
+  `/ViewerPreferences << /DisplayDocTitle true >>`, so viewers show
+  the document title (not the file name) in the title bar — a PDF/UA
+  requirement.
+
+These hooks are consumed by the new `aloli-crystal/pdf-ua` shard
+(J4). On its own, `pdf` enforces no PDF/UA constraint — it only
+records the declarations. Non-UA documents are unaffected.
+
 == v0.7.4 — 2026-06-02 — Expose non-embedded fonts (for pdf-a J3)
 
 === Added

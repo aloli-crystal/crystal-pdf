@@ -18,6 +18,7 @@ module PDF
         modification_date : Time = Time.utc,
         pdfa_part : Int32? = nil,
         pdfa_conformance : String? = nil,
+        pdfua_part : Int32? = nil,
       ) : Objects::Stream
         xml = generate_xml(
           title: title,
@@ -29,7 +30,8 @@ module PDF
           creation_date: creation_date,
           modification_date: modification_date,
           pdfa_part: pdfa_part,
-          pdfa_conformance: pdfa_conformance
+          pdfa_conformance: pdfa_conformance,
+          pdfua_part: pdfua_part
         )
 
         stream = Objects::Stream.new
@@ -52,6 +54,7 @@ module PDF
         modification_date : Time,
         pdfa_part : Int32? = nil,
         pdfa_conformance : String? = nil,
+        pdfua_part : Int32? = nil,
       ) : String
         create_iso = xmp_date(creation_date)
         modify_iso = xmp_date(modification_date)
@@ -64,7 +67,8 @@ module PDF
           io << %(  xmlns:dc="http://purl.org/dc/elements/1.1/"\n)
           io << %(  xmlns:xmp="http://ns.adobe.com/xap/1.0/"\n)
           io << %(  xmlns:pdf="http://ns.adobe.com/pdf/1.3/"\n)
-          io << %(  xmlns:pdfaid="http://www.aiim.org/pdfa/ns/id/">\n)
+          io << %(  xmlns:pdfaid="http://www.aiim.org/pdfa/ns/id/"\n)
+          io << %(  xmlns:pdfuaid="http://www.aiim.org/pdfua/ns/id/">\n)
 
           # Dublin Core: title
           if t = title
@@ -116,6 +120,13 @@ module PDF
           end
           if conf = pdfa_conformance
             io << %(<pdfaid:conformance>) << escape_xml(conf) << %(</pdfaid:conformance>\n)
+          end
+
+          # PDF/UA identification (pdfuaid). REQUIRED for a conforming
+          # PDF/UA file : declares the part (1, 2…). Emitted only when
+          # set by the pdf-ua shard.
+          if ua = pdfua_part
+            io << %(<pdfuaid:part>) << ua << %(</pdfuaid:part>\n)
           end
 
           io << %(</rdf:Description>\n)
