@@ -327,22 +327,34 @@ module PDF
     # ```
     # page.text "Hello, World!", at: {72, 720}
     # ```
-    # Draws `content` at `at`. `word_spacing` (in unstretched text-space
-    # units) sets the PDF word-spacing parameter via the `Tw` operator
-    # (ISO 32000-1 § 9.3.3) : the extra spacing added to each
-    # single-byte space (code 32), used chiefly for justified text.
+    # An element of a `text_positioned` run : either a string to show
+    # or a numeric glyph-positioning adjustment (in thousandths of a
+    # unit of text space, subtracted from the current position — see
+    # the `TJ` operator, ISO 32000-1 § 9.4.3).
+    alias TextRun = String | Int32 | Int64 | Float64
+
+    # Draws `content` at `at`.
     #
-    # NOTE: per § 9.3.3, `Tw` only affects the single-byte code 32, so
-    # it applies to the simple (standard-14 / Type1) fonts. For a
-    # composite (multi-byte, Type0/CID) font — `composite_font?` — `Tw`
-    # has no effect and the parameter is ignored ; callers justify such
-    # text another way (e.g. word-by-word positioning).
-    def text(content : String, *, at : Tuple(Number, Number), word_spacing : Number = 0.0) : self
+    # * `word_spacing` sets the PDF word-spacing parameter via `Tw`
+    #   (ISO 32000-1 § 9.3.3) — the extra spacing added to each
+    #   single-byte space (code 32). Per § 9.3.3 `Tw` only affects the
+    #   single-byte code 32, so it applies to simple (standard-14 /
+    #   Type1) fonts ; for a composite font (`composite_font?`) it has
+    #   no effect and is ignored.
+    # * `char_spacing` sets the character-spacing parameter via `Tc`
+    #   (ISO 32000-1 § 9.3.2) — extra spacing added after every glyph.
+    #   Unlike `Tw`, it applies to *all* fonts (simple and composite),
+    #   which makes it the tool for justifying CJK text.
+    #
+    # Both are emitted before the show and reset to 0 within the same
+    # text object, so they stay local and never leak into later text.
+    def text(content : String, *, at : Tuple(Number, Number), word_spacing : Number = 0.0, char_spacing : Number = 0.0) : self
       font_name = @current_font
       raise "No font set. Call page.font first." unless font_name
 
       x, y = at
       ws = word_spacing.to_f
+      cs = char_spacing.to_f
 
       # Handle TrueType fonts differently
       if ttf_font = @current_truetype_font
@@ -351,8 +363,10 @@ module PDF
 
         @content << "BT\n"
         @content << "/#{font_key} #{format_number(@current_font_size)} Tf\n"
+        @content << "#{format_number(cs)} Tc\n" if cs != 0.0 # Character spacing
         @content << "#{format_number(x.to_f)} #{format_number(y.to_f)} Td\n"
         @content << encoded_text << " Tj\n"
+        @content << "0 Tc\n" if cs != 0.0 # Reset character spacing
         @content << "ET\n"
       else
         font_key = font_resource_key(font_name)
@@ -360,20 +374,66 @@ module PDF
         # Build text content stream
         @content << "BT\n"                                                   # Begin text
         @content << "/#{font_key} #{format_number(@current_font_size)} Tf\n" # Set font
+        @content << "#{format_number(cs)} Tc\n" if cs != 0.0                 # Character spacing
         @content << "#{format_number(ws)} Tw\n" if ws != 0.0                 # Word spacing
         @content << "#{format_number(x.to_f)} #{format_number(y.to_f)} Td\n" # Position
         @content << encode_text_string(content, font_name) << " Tj\n"        # Show text
         @content << "0 Tw\n" if ws != 0.0                                    # Reset word spacing
+        @content << "0 Tc\n" if cs != 0.0                                    # Reset character spacing
         @content << "ET\n"                                                   # End text
       end
 
       self
     end
 
+    # Shows text with per-glyph positioning via the `TJ` operator
+    # (ISO 32000-1 § 9.4.3) — the universal tool that works for both
+    # simple and composite fonts. `runs` mixes strings (shown with the
+    # current font's encoding) and numbers (position adjustments, in
+    # thousandths of a unit of text space, subtracted from the current
+    # position). `char_spacing` (`Tc`) and `word_spacing` (`Tw`) may be
+    # set too — both reset to 0 within the same text object.
+    #
+    # ```
+    # page.text_positioned(["A", -80, "V", -80, "A"], at: {72, 700})
+    # ```
+    def text_positioned(runs : Array(TextRun), *, at : Tuple(Number, Number), char_spacing : Number = 0.0, word_spacing : Number = 0.0) : self
+      font_name = @current_font
+      raise "No font set. Call page.font first." unless font_name
+
+      x, y = at
+      cs = char_spacing.to_f
+      ws = word_spacing.to_f
+      ttf_font = @current_truetype_font
+      font_key = ttf_font ? @truetype_font_resources[ttf_font].key : font_resource_key(font_name)
+
+      @content << "BT\n"
+      @content << "/#{font_key} #{format_number(@current_font_size)} Tf\n"
+      @content << "#{format_number(cs)} Tc\n" if cs != 0.0
+      @content << "#{format_number(ws)} Tw\n" if ws != 0.0 && ttf_font.nil?
+      @content << "#{format_number(x.to_f)} #{format_number(y.to_f)} Td\n"
+
+      @content << "["
+      runs.each do |run|
+        case run
+        when String
+          @content << (ttf_font ? ttf_font.encode_text(run) : encode_text_string(run, font_name))
+        else
+          @content << ' ' << format_number(run.to_f) << ' '
+        end
+      end
+      @content << "] TJ\n"
+
+      @content << "0 Tw\n" if ws != 0.0 && ttf_font.nil?
+      @content << "0 Tc\n" if cs != 0.0
+      @content << "ET\n"
+      self
+    end
+
     # `true` when the current font is a composite (multi-byte,
     # Type0/CID) font. Word spacing (`Tw`) does not apply to such fonts
-    # (ISO 32000-1 § 9.3.3), so justified text must be positioned
-    # another way.
+    # (ISO 32000-1 § 9.3.3), so justified text must be positioned with
+    # `Tc` (character spacing) or `TJ` (per-glyph) instead.
     def composite_font? : Bool
       !@current_truetype_font.nil?
     end

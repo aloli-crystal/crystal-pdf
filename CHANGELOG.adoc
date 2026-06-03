@@ -7,6 +7,41 @@ All notable changes to pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v1.2.0 — 2026-06-03 — TJ and Tc operators (positioning and spacing)
+
+=== Added
+
+* **`Page#text_positioned` — the `TJ` operator** (Show Text Allowing
+  Individual Glyph Positioning, ISO 32000-1 § 9.4.3). The universal
+  tool (simple *and* composite fonts) : `runs` mixes strings (shown
+  with the current font's encoding) and numbers (position adjustments,
+  in thousandths of a unit of text space, subtracted from the current
+  position). `char_spacing` and `word_spacing` may be combined.
++
+[source,crystal]
+----
+page.text_positioned(["A", -80, "V", -80, "A"], at: {72, 700})
+----
+* **`Page#text` accepts `char_spacing` — the `Tc` operator** (Character
+  Spacing, ISO 32000-1 § 9.3.2) : spacing added after every glyph.
+  Unlike `Tw`, `Tc` applies to *all* fonts (simple and composite),
+  making it the tool for **justifying CJK text** (where characters are
+  spread out, there being no inter-word spaces). Emitted before the
+  show and reset to `0` within the same text object.
+
+=== Conformance notes
+
+`TJ` (§ 9.4.3) and `Tc` (§ 9.3.2) complement `Tw` (§ 9.3.3, v1.1.0) :
+`Tw` for word spacing on simple fonts, `Tc`/`TJ` for spacing and
+fine positioning that also work on multi-byte composite fonts.
+
+=== Tests
+
+* Specs : `Tc`/`0 Tc` emission (simple *and* composite TrueType via
+  DejaVuSans), a `TJ` array mixing strings and adjustments (simple and
+  composite), and combined `Tc` + `TJ`. Verified with qpdf ("No syntax
+  or stream encoding errors").
+
 == v1.1.0 — 2026-06-03 — Native word spacing (Tw operator)
 
 === Added

@@ -7,6 +7,44 @@ Toutes les évolutions notables de pdf sont consignées ici. Le
 format suit https://keepachangelog.com/fr/1.1.0/[Keep a Changelog] et
 le versionnage respecte https://semver.org/lang/fr/[SemVer].
 
+== v1.2.0 — 2026-06-03 — Opérateurs TJ et Tc (positionnement et espacement)
+
+=== Ajouté
+
+* **`Page#text_positioned` — l'opérateur `TJ`** (Show Text Allowing
+  Individual Glyph Positioning, ISO 32000-1 § 9.4.3). Outil universel
+  (polices simples *et* composites) : `runs` mêle des chaînes (rendues
+  avec l'encodage de la police courante) et des nombres (ajustements
+  de position, en millièmes d'unité de texte, soustraits de la
+  position courante). `char_spacing` et `word_spacing` peuvent être
+  combinés.
++
+[source,crystal]
+----
+page.text_positioned(["A", -80, "V", -80, "A"], at: {72, 700})
+----
+* **`Page#text` accepte `char_spacing` — l'opérateur `Tc`** (Character
+  Spacing, ISO 32000-1 § 9.3.2) : espacement ajouté après chaque
+  glyphe. Contrairement à `Tw`, `Tc` s'applique à *toutes* les polices
+  (simples et composites), ce qui en fait l'outil de **justification
+  des textes CJK** (où l'on étale les caractères, faute d'espaces
+  entre mots). Émis avant l'affichage, remis à `0` dans le même objet
+  texte.
+
+=== Notes de conformité
+
+`TJ` (§ 9.4.3) et `Tc` (§ 9.3.2) complètent `Tw` (§ 9.3.3, v1.1.0) :
+`Tw` pour l'espacement de mots des polices simples, `Tc`/`TJ` pour
+l'espacement et le positionnement fin, valables aussi pour les
+polices composites multi-octets.
+
+=== Tests
+
+* Specs : émission de `Tc`/`0 Tc` (police simple *et* TrueType
+  composite via DejaVuSans), tableau `TJ` mêlant chaînes et
+  ajustements (simple et composite), combinaison `Tc` + `TJ`. Vérifié
+  qpdf (« No syntax or stream encoding errors »).
+
 == v1.1.0 — 2026-06-03 — Espacement de mots natif (opérateur Tw)
 
 === Ajouté
