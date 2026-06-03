@@ -275,3 +275,41 @@ describe PDF::Page do
     end
   end
 end
+
+describe "PDF::Page word spacing (Tw, ISO 32000-1 § 9.3.3)" do
+  it "emits the native Tw operator for a simple font" do
+    _, page = BoxSpecHelper.make_doc_and_page
+    page.text("a b c", at: {0.0, 0.0}, word_spacing: 3.0)
+    content = page.@content.to_s
+    content.should contain("3 Tw")
+    content.should contain("0 Tw") # reset, kept local to the text object
+  end
+
+  it "does not emit Tw when word spacing is zero" do
+    _, page = BoxSpecHelper.make_doc_and_page
+    page.text("a b c", at: {0.0, 0.0})
+    page.@content.to_s.should_not contain("Tw")
+  end
+
+  it "reports standard-14 fonts as non-composite" do
+    _, page = BoxSpecHelper.make_doc_and_page
+    page.composite_font?.should be_false
+  end
+end
+
+describe "PDF::Text::Formatted::Box justification" do
+  it "uses the native Tw operator (single Tj, not word-by-word)" do
+    doc, page = BoxSpecHelper.make_doc_and_page
+    box = PDF::Text::Formatted::Box.new(
+      formatted_text: [BoxSpecHelper.make_hash("the quick brown fox jumps over")],
+      at: {50.0, 700.0},
+      width: 120.0,
+      height: 200.0,
+      document: doc,
+      align: :justify,
+    )
+    box.render(page)
+    content = page.@content.to_s
+    content.should contain("Tw")
+  end
+end

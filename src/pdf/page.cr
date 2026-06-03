@@ -327,11 +327,22 @@ module PDF
     # ```
     # page.text "Hello, World!", at: {72, 720}
     # ```
-    def text(content : String, *, at : Tuple(Number, Number)) : self
+    # Draws `content` at `at`. `word_spacing` (in unstretched text-space
+    # units) sets the PDF word-spacing parameter via the `Tw` operator
+    # (ISO 32000-1 § 9.3.3) : the extra spacing added to each
+    # single-byte space (code 32), used chiefly for justified text.
+    #
+    # NOTE: per § 9.3.3, `Tw` only affects the single-byte code 32, so
+    # it applies to the simple (standard-14 / Type1) fonts. For a
+    # composite (multi-byte, Type0/CID) font — `composite_font?` — `Tw`
+    # has no effect and the parameter is ignored ; callers justify such
+    # text another way (e.g. word-by-word positioning).
+    def text(content : String, *, at : Tuple(Number, Number), word_spacing : Number = 0.0) : self
       font_name = @current_font
       raise "No font set. Call page.font first." unless font_name
 
       x, y = at
+      ws = word_spacing.to_f
 
       # Handle TrueType fonts differently
       if ttf_font = @current_truetype_font
@@ -349,12 +360,22 @@ module PDF
         # Build text content stream
         @content << "BT\n"                                                   # Begin text
         @content << "/#{font_key} #{format_number(@current_font_size)} Tf\n" # Set font
+        @content << "#{format_number(ws)} Tw\n" if ws != 0.0                 # Word spacing
         @content << "#{format_number(x.to_f)} #{format_number(y.to_f)} Td\n" # Position
         @content << encode_text_string(content, font_name) << " Tj\n"        # Show text
+        @content << "0 Tw\n" if ws != 0.0                                    # Reset word spacing
         @content << "ET\n"                                                   # End text
       end
 
       self
+    end
+
+    # `true` when the current font is a composite (multi-byte,
+    # Type0/CID) font. Word spacing (`Tw`) does not apply to such fonts
+    # (ISO 32000-1 § 9.3.3), so justified text must be positioned
+    # another way.
+    def composite_font? : Bool
+      !@current_truetype_font.nil?
     end
 
     # Renders an icon from a loaded icon font (e.g., FontAwesome).

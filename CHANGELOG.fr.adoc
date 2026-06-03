@@ -7,6 +7,40 @@ Toutes les évolutions notables de pdf sont consignées ici. Le
 format suit https://keepachangelog.com/fr/1.1.0/[Keep a Changelog] et
 le versionnage respecte https://semver.org/lang/fr/[SemVer].
 
+== v1.1.0 — 2026-06-03 — Espacement de mots natif (opérateur Tw)
+
+=== Ajouté
+
+* **`Page#text` accepte `word_spacing`** — l'espacement de mots est
+  désormais posé via l'opérateur PDF natif `Tw` (ISO 32000-1 § 9.3.3)
+  plutôt que par un positionnement mot à mot côté Crystal. Le `Tw` est
+  émis avant l'affichage puis remis à `0` dans le même objet texte
+  (BT…ET), de sorte qu'il reste local et n'affecte pas le texte
+  suivant.
+* **`Page#composite_font?`** — indique si la police courante est
+  composite (multi-octets, Type0/CID).
+
+=== Modifié
+
+* **Texte justifié (`Text::Formatted::Box`)** — pour une police simple
+  (standard-14 / Type1), la justification utilise maintenant `Tw`
+  (un seul `Tj` par fragment) au lieu de dessiner chaque mot
+  séparément. Conséquence : flux de contenu plus courts et plus
+  idiomatiques, rendu visuel identique.
++
+Conforme à la spec : `Tw` ne s'applique qu'au code octet 32 sur un
+seul octet (ISO 32000-1 § 9.3.3). Pour une police composite
+(multi-octets), où ce code ne représente pas l'espace, le rendu
+conserve le positionnement mot à mot (repli `draw_justified_fragment`,
+sélectionné via `composite_font?`).
+
+=== Tests
+
+* Specs : émission de `Tw`/`0 Tw` pour une police simple, absence de
+  `Tw` quand `word_spacing` vaut 0, `composite_font?` faux pour les
+  standard-14, et justification de boîte produisant `Tw`. Vérifié
+  qpdf (« No syntax or stream encoding errors ») et round-trip lecteur.
+
 == v1.0.0 — 2026-06-02 — Conformité ISO certifiable
 
 Le RATIONALE fixait une seule condition au `1.0.0` : la suite doit

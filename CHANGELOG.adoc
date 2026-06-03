@@ -7,6 +7,37 @@ All notable changes to pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v1.1.0 — 2026-06-03 — Native word spacing (Tw operator)
+
+=== Added
+
+* **`Page#text` accepts `word_spacing`** — word spacing is now set via
+  the native PDF `Tw` operator (ISO 32000-1 § 9.3.3) instead of
+  word-by-word positioning in Crystal. `Tw` is emitted before the show
+  and reset to `0` within the same text object (BT…ET), so it stays
+  local and does not leak into subsequent text.
+* **`Page#composite_font?`** — reports whether the current font is a
+  composite (multi-byte, Type0/CID) font.
+
+=== Changed
+
+* **Justified text (`Text::Formatted::Box`)** — for a simple
+  (standard-14 / Type1) font, justification now uses `Tw` (one `Tj`
+  per fragment) instead of drawing each word separately : shorter,
+  more idiomatic content streams, identical visual output.
++
+Spec-compliant : `Tw` only applies to the single-byte code 32
+(ISO 32000-1 § 9.3.3). For a composite (multi-byte) font, where that
+code is not the space, rendering keeps word-by-word positioning (the
+`draw_justified_fragment` fallback, selected via `composite_font?`).
+
+=== Tests
+
+* Specs : `Tw`/`0 Tw` emission for a simple font, no `Tw` when
+  `word_spacing` is 0, `composite_font?` false for the standard-14
+  fonts, and box justification producing `Tw`. Verified with qpdf
+  ("No syntax or stream encoding errors") and a reader round-trip.
+
 == v1.0.0 — 2026-06-02 — Certifiable ISO conformance
 
 The RATIONALE set a single condition for `1.0.0` : the suite must be

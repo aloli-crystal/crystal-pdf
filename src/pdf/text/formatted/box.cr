@@ -266,8 +266,15 @@ module PDF
           page.font(font_name, size: font_size)
 
           if fragment.word_spacing != 0.0
-            # For justified text, draw word by word with extra spacing
-            draw_justified_fragment(page, fragment, x, y, font_size)
+            if page.composite_font?
+              # Composite (multi-byte) font : Tw does not apply to its
+              # multi-byte space codes (ISO 32000-1 § 9.3.3), so fall
+              # back to word-by-word positioning.
+              draw_justified_fragment(page, fragment, x, y, font_size)
+            else
+              # Simple font : use the native Tw word-spacing operator.
+              page.text(fragment.text, at: {x, y}, word_spacing: fragment.word_spacing)
+            end
           else
             page.text(fragment.text, at: {x, y})
           end
