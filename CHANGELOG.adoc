@@ -7,6 +7,39 @@ All notable changes to pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v1.5.0 — 2026-06-04 — NChannel colour space (/Subtype /NChannel, /Process)
+
+=== Added
+
+* **`PDF::ColorSpaces::NChannel`** — a specialised `DeviceN` whose
+  attributes dictionary carries `/Subtype /NChannel`, the modern form
+  for spaces mixing process inks with spot colorants. Subclass of
+  `DeviceN` : it reuses the array form, the tint transform and the
+  `/Colorants` logic (PDF/A-2 § 6.2.4.4, v1.3.0), and always emits an
+  attributes dictionary.
+* Optional **`/Process`** description via the `process_components`
+  constructor argument : emits `/Process << /ColorSpace [/ICCBased
+  ref] /Components [names] >>`. Validated against the alternate's
+  channel count and the colorant name list.
+* Usable on a page with no API change : because `NChannel` is a
+  `DeviceN`, `Page#color_space` / `Page#fill_color` / `Page#stroke_color`
+  accept it directly (tint count = number of colorants).
+
+=== Conformance notes
+
+NChannel is subject to the same § 6.2.4.4 `/Colorants` requirement as
+DeviceN ; the inherited logic covers it. This completes the § 6.2.4.4
+coverage (DeviceN *and* NChannel).
+
+=== Tests
+
+* Specs : `/Subtype /NChannel`, inherited `/Colorants`, `/Process`
+  dictionary, `process_components` arity / membership validation, and
+  Page integration (registration, `scn`, byte output).
+* Validated with veraPDF (`-f 2b`) : a PDF/A-2b document filling an
+  NChannel (CMYK process + spot, with `/Process`) is fully compliant
+  (144/144 rules), generated via the public API.
+
 == v1.4.0 — 2026-06-04 — Separation / DeviceN usable on a page (cs/scn, /ColorSpace)
 
 === Added

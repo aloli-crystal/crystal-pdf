@@ -119,10 +119,11 @@ require "./pdf/page_bounding_box"
 require "./pdf/page_table"
 require "./pdf/page_svg"
 
-# Colour spaces (ICCBased, Separation, DeviceN)
+# Colour spaces (ICCBased, Separation, DeviceN, NChannel)
 require "./pdf/color_spaces/icc_based"
 require "./pdf/color_spaces/separation"
 require "./pdf/color_spaces/device_n"
+require "./pdf/color_spaces/n_channel"
 
 # Output intents — colour reproduction declaration (PDF spec § 14.11.5)
 require "./pdf/output_intent"
