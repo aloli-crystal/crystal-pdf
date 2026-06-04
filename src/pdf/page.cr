@@ -59,6 +59,16 @@ module PDF
     # XObject resources for stamps (Form XObjects)
     @stamp_resources : Hash(String, Objects::Reference)
 
+    # Named colour-space resources (`/Resources /ColorSpace`) for
+    # Separation / DeviceN spaces — resource key (e.g. "CS1") -> the
+    # colour-space array's indirect reference.
+    @color_space_resources : Hash(String, Objects::Reference)
+
+    # Deduplication map : a Separation / DeviceN registered twice on
+    # the same page reuses its resource key instead of emitting a
+    # second colour-space object. Keyed by instance identity.
+    @color_space_keys : Hash(ColorSpaces::Separation | ColorSpaces::DeviceN, String)
+
     # Annots on this page (links, text notes, etc.)
     @annots : Array(Annot)
 
@@ -123,6 +133,8 @@ module PDF
       @pattern_resources = {} of String => Objects::Reference
       @shading_resources = {} of String => Objects::Reference
       @stamp_resources = {} of String => Objects::Reference
+      @color_space_resources = {} of String => Objects::Reference
+      @color_space_keys = {} of ColorSpaces::Separation | ColorSpaces::DeviceN => String
       @annots = [] of Annot
       @annot_refs = [] of Objects::Reference
       @next_mcid = 0
@@ -696,6 +708,97 @@ module PDF
     def fill_color_space(name : String) : self
       @content << "/#{name} cs\n"
       self
+    end
+
+    # Registers a `Separation` or `DeviceN` colour space on this page
+    # and returns the resource name (e.g. `"CS1"`) to use with the
+    # colour-space operators. The alternate ICC profile is embedded
+    # once at the document level (`Document#icc_profile_ref`) and the
+    # colour-space array is written as an indirect object. Registering
+    # the same space instance twice returns the same name without
+    # emitting a second object.
+    #
+    # ```
+    # spot = PDF::ColorSpaces::Separation.new(
+    #   name: "Pantone 185 C",
+    #   alternate: PDF::ColorSpaces::ICCBased.fogra39,
+    #   c1: [0.0, 1.0, 0.7, 0.0],
+    # )
+    # name = page.color_space(spot) # => "CS1"
+    # page.fill_color_space(name).fill_tint(1.0)
+    # ```
+    def color_space(space : ColorSpaces::Separation | ColorSpaces::DeviceN) : String
+      @color_space_keys[space] ||= begin
+        icc_ref = @document.icc_profile_ref(space.alternate)
+        cs_ref = @document.register_object(space.to_array(icc_ref)).reference
+        key = "CS#{@color_space_resources.size + 1}"
+        @color_space_resources[key] = cs_ref
+        key
+      end
+    end
+
+    # Sets the fill colour in the current colour space from raw tint
+    # component values — emits the `scn` operator. One value for a
+    # `Separation`, N for a `DeviceN`. Call after selecting the space
+    # with `fill_color_space`.
+    #
+    # ```
+    # page.fill_color_space(page.color_space(spot)).fill_tint(1.0)
+    # ```
+    def fill_tint(*tints : Number) : self
+      tints.each { |t| @content << format_number(t.to_f) << ' ' }
+      @content << "scn\n"
+      self
+    end
+
+    # Sets the stroke colour in the current colour space from raw tint
+    # component values — emits the `SCN` operator. See `#fill_tint`.
+    def stroke_tint(*tints : Number) : self
+      tints.each { |t| @content << format_number(t.to_f) << ' ' }
+      @content << "SCN\n"
+      self
+    end
+
+    # Selects `space` as the fill colour space (registering it on
+    # first use) and sets the fill colour to `tints`. The number of
+    # tints must match the space (1 for a `Separation`, N for a
+    # `DeviceN`).
+    #
+    # ```
+    # # Separation : one tint (0 = paper white, 1 = full ink)
+    # page.fill_color(spot, 1.0)
+    # # DeviceN : one tint per colorant
+    # page.fill_color(duotone, 1.0, 0.0)
+    # ```
+    def fill_color(space : ColorSpaces::Separation | ColorSpaces::DeviceN, *tints : Number) : self
+      ensure_tint_arity(space, tints.size)
+      fill_color_space(color_space(space))
+      fill_tint(*tints)
+    end
+
+    # Selects `space` as the stroke colour space (registering it on
+    # first use) and sets the stroke colour to `tints`. See
+    # `#fill_color`.
+    def stroke_color(space : ColorSpaces::Separation | ColorSpaces::DeviceN, *tints : Number) : self
+      ensure_tint_arity(space, tints.size)
+      stroke_color_space(color_space(space))
+      stroke_tint(*tints)
+    end
+
+    # Number of tint components a colour space expects : 1 for a
+    # `Separation`, one per colorant for a `DeviceN`.
+    private def color_space_component_count(space : ColorSpaces::Separation | ColorSpaces::DeviceN) : Int32
+      case space
+      in ColorSpaces::Separation then 1
+      in ColorSpaces::DeviceN    then space.names.size
+      end
+    end
+
+    private def ensure_tint_arity(space : ColorSpaces::Separation | ColorSpaces::DeviceN, given : Int32) : Nil
+      expected = color_space_component_count(space)
+      unless given == expected
+        raise ArgumentError.new("colour space expects #{expected} tint value(s), got #{given}")
+      end
     end
 
     # Sets the line width.
@@ -1790,6 +1893,15 @@ module PDF
         end
 
         resources["ExtGState"] = ext_g_state_dict unless ext_g_state_dict.empty?
+      end
+
+      # Add ColorSpace resources (Separation / DeviceN spot spaces)
+      unless @color_space_resources.empty?
+        color_space_dict = Objects::Dictionary.new
+        @color_space_resources.each do |key, ref|
+          color_space_dict[key] = ref
+        end
+        resources["ColorSpace"] = color_space_dict
       end
 
       # ProcSet (required for some viewers)

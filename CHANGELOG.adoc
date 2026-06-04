@@ -7,6 +7,44 @@ All notable changes to pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v1.4.0 — 2026-06-04 — Separation / DeviceN usable on a page (cs/scn, /ColorSpace)
+
+=== Added
+
+* **`Page#color_space(space)`** — registers a `Separation` or `DeviceN`
+  colour space into the page's `/Resources /ColorSpace` and returns its
+  resource name (`"CS1"`, `"CS2"`, …). Re-registering the same instance
+  returns the same name (no duplicate object).
+* **`Page#fill_color(space, *tints)` / `Page#stroke_color(space,
+  *tints)`** — convenience : select the special colour space and set
+  the colour in one call (emits `/CSn cs` + `scn`, resp. `/CSn CS` +
+  `SCN`). The tint count must match the space (1 for a Separation, N
+  for a DeviceN) — raises `ArgumentError` otherwise.
+* **`Page#fill_tint(*tints)` / `Page#stroke_tint(*tints)`** — low-level
+  `scn` / `SCN` emitters for an already-selected colour space.
+* **`Document#icc_profile_ref(icc)`** — embeds an ICC profile stream
+  once and returns its reference ; a profile shared as the alternate of
+  several Separation / DeviceN spaces (or as the output intent) is
+  written only once.
+* `build_resources` now emits the `/ColorSpace` sub-dictionary.
+
+=== Notes
+
+Until now `Separation` / `DeviceN` (and their PDF/A-2 § 6.2.4.4
+`/Colorants`, v1.3.0) could be built but not actually placed on a page
+through the public API. This release wires them end-to-end : a page can
+fill/stroke with a spot or multi-ink colour.
+
+=== Tests
+
+* Specs : resource-name allocation and deduplication, `/ColorSpace`
+  emission, `cs`/`scn` and `CS`/`SCN` content, tint-arity validation,
+  document-level ICC deduplication, and end-to-end byte output.
+* Validated with veraPDF (`-f 2b`) : a PDF/A-2b document filling a
+  DeviceN spot space *and* a Separation spot space (sharing one ICC
+  profile) is fully compliant (144/144 rules) — generated via the
+  public API, no internal hooks.
+
 == v1.3.0 — 2026-06-04 — DeviceN spot colorants (/Colorants, PDF/A-2 § 6.2.4.4)
 
 === Added

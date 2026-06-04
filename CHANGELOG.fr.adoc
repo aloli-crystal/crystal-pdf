@@ -7,6 +7,47 @@ Toutes les évolutions notables de pdf sont consignées ici. Le
 format suit https://keepachangelog.com/fr/1.1.0/[Keep a Changelog] et
 le versionnage respecte https://semver.org/lang/fr/[SemVer].
 
+== v1.4.0 — 2026-06-04 — Separation / DeviceN utilisables sur la page (cs/scn, /ColorSpace)
+
+=== Ajouté
+
+* **`Page#color_space(space)`** — enregistre un espace `Separation` ou
+  `DeviceN` dans le `/Resources /ColorSpace` de la page et renvoie son
+  nom de ressource (`"CS1"`, `"CS2"`, …). Réenregistrer la même
+  instance renvoie le même nom (pas d'objet dupliqué).
+* **`Page#fill_color(space, *tints)` / `Page#stroke_color(space,
+  *tints)`** — convenance : sélectionne l'espace spécial et fixe la
+  couleur en un appel (émet `/CSn cs` + `scn`, resp. `/CSn CS` +
+  `SCN`). Le nombre de teintes doit correspondre à l'espace (1 pour une
+  Separation, N pour un DeviceN) — lève `ArgumentError` sinon.
+* **`Page#fill_tint(*tints)` / `Page#stroke_tint(*tints)`** —
+  émetteurs bas niveau de `scn` / `SCN` pour un espace déjà
+  sélectionné.
+* **`Document#icc_profile_ref(icc)`** — embarque un stream de profil
+  ICC une seule fois et renvoie sa référence ; un profil partagé comme
+  alternatif de plusieurs espaces Separation / DeviceN (ou comme output
+  intent) n'est écrit qu'une fois.
+* `build_resources` émet désormais le sous-dictionnaire `/ColorSpace`.
+
+=== Notes
+
+Jusqu'ici, `Separation` / `DeviceN` (et leur `/Colorants` PDF/A-2
+§ 6.2.4.4, v1.3.0) pouvaient être construits mais pas réellement posés
+sur une page via l'API publique. Cette version les câble de bout en
+bout : une page peut remplir/tracer avec une couleur spot ou
+multi-encre.
+
+=== Tests
+
+* Specs : attribution et déduplication des noms de ressource, émission
+  de `/ColorSpace`, contenu `cs`/`scn` et `CS`/`SCN`, validation du
+  nombre de teintes, déduplication ICC au niveau document, et sortie
+  octets de bout en bout.
+* Validé avec veraPDF (`-f 2b`) : un document PDF/A-2b remplissant un
+  espace DeviceN spot *et* un espace Separation spot (partageant un même
+  profil ICC) est pleinement conforme (144/144 règles) — généré via
+  l'API publique, sans crochet interne.
+
 == v1.3.0 — 2026-06-04 — Colorants spot DeviceN (/Colorants, PDF/A-2 § 6.2.4.4)
 
 === Ajouté

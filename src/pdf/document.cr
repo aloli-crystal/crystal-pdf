@@ -172,6 +172,13 @@ module PDF
     # table column) avoids re-running the XML parser.
     @svg_parsers : Hash(String, SVG::Parser)
 
+    # Cache of registered ICC profile streams, keyed by `ICCBased`
+    # instance identity. Lets a single profile (e.g. one
+    # `ICCBased.fogra39` shared as the alternate of several Separation
+    # / DeviceN spaces, or as an output intent) be embedded once and
+    # referenced from many colour spaces.
+    @icc_profile_refs : Hash(ColorSpaces::ICCBased, Objects::Reference)
+
     def initialize
       @objects = [] of Objects::Indirect
       @pages = [] of Page
@@ -182,6 +189,7 @@ module PDF
       @stamps = {} of String => Objects::Indirect
       @finalized_ttf_refs = {} of Fonts::TrueTypeFont => Objects::Reference
       @svg_parsers = {} of String => SVG::Parser
+      @icc_profile_refs = {} of ColorSpaces::ICCBased => Objects::Reference
     end
 
     # Returns a cached `SVG::Parser` for `svg_data`, parsing on demand.
@@ -236,6 +244,15 @@ module PDF
       obj = Objects::Indirect.new(allocate_object_id, value)
       @objects << obj
       obj
+    end
+
+    # Embeds `icc` as an indirect stream once and returns its
+    # reference. Subsequent calls with the same `ICCBased` instance
+    # return the cached reference, so a profile shared by several
+    # colour spaces (the alternate of multiple `Separation` / `DeviceN`
+    # spaces, for instance) is written only once.
+    def icc_profile_ref(icc : ColorSpaces::ICCBased) : Objects::Reference
+      @icc_profile_refs[icc] ||= register_object(icc.to_stream).reference
     end
 
     # Gets or registers a font by name.
