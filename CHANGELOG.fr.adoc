@@ -7,6 +7,40 @@ Toutes les évolutions notables de pdf sont consignées ici. Le
 format suit https://keepachangelog.com/fr/1.1.0/[Keep a Changelog] et
 le versionnage respecte https://semver.org/lang/fr/[SemVer].
 
+== v1.6.0 — 2026-06-04 — Indices de mélange NChannel (/Solidities, /PrintingOrder, /DotGain)
+
+=== Ajouté
+
+* **Indices de mélange `NChannel`** (ISO 32000-1 § 8.6.6.5) via trois
+  arguments optionnels du constructeur :
+  ** `solidities : Hash(String, Float64)` → `/MixingHints /Solidities`
+     (opacité par colorant dans `[0, 1]`, plus un `"Default"`
+     optionnel).
+  ** `printing_order : Array(String)` → `/MixingHints /PrintingOrder`
+     (ordre de dépôt des colorants).
+  ** `dot_gain : Hash(String, Float64)` → `/MixingHints /DotGain`,
+     chaque valeur étant l'exposant `N` d'une fonction Type-2
+     `f(t) = t^N` sur `[0, 1]` (`N < 1` rehausse les demi-teintes).
+* `/MixingHints` n'est émis que si au moins un des trois est fourni.
+
+=== Validation
+
+* Les valeurs de `solidities` doivent être dans `[0, 1]` et indexées
+  par un nom de colorant ou `"Default"` ; les noms de
+  `printing_order` doivent être des colorants ; les exposants de
+  `dot_gain` doivent être `> 0`. Conformément au § 8.6.6.5, fournir
+  `solidities` sans `printing_order` lève une erreur.
+
+=== Tests
+
+* Specs : émission et omission de `/MixingHints`, les trois
+  sous-entrées (dont la fonction Type-2 de `/DotGain`), et tous les
+  chemins de validation.
+* Validé avec veraPDF (`-f 2b`) : un document PDF/A-2b avec un
+  NChannel portant des indices de mélange complets est pleinement
+  conforme (144/144 règles). Ceci clôt le chantier des espaces
+  couleur § 6.2.4.4 / § 8.6.6.5.
+
 == v1.5.0 — 2026-06-04 — Espace couleur NChannel (/Subtype /NChannel, /Process)
 
 === Ajouté

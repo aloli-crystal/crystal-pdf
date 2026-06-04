@@ -92,6 +92,112 @@ describe PDF::ColorSpaces::NChannel do
     end
   end
 
+  describe "/MixingHints" do
+    it "omits /MixingHints when none are supplied" do
+      attributes = cmyk_plus_spot.to_array(PDF::Objects::Reference.new(7))[4].as(PDF::Objects::Dictionary)
+      attributes.has_key?("MixingHints").should be_false
+    end
+
+    it "emits /Solidities, /PrintingOrder and /DotGain" do
+      nchan = PDF::ColorSpaces::NChannel.new(
+        names: ["Cyan", "Magenta", "Yellow", "Black", "Pantone 877 C"],
+        alternate: PDF::ColorSpaces::ICCBased.fogra39,
+        c1_per_component: [
+          [1.0, 0.0, 0.0, 0.0],
+          [0.0, 1.0, 0.0, 0.0],
+          [0.0, 0.0, 1.0, 0.0],
+          [0.0, 0.0, 0.0, 1.0],
+          [0.0, 0.0, 0.0, 0.2],
+        ],
+        solidities: {"Pantone 877 C" => 1.0, "Default" => 0.0},
+        printing_order: ["Cyan", "Magenta", "Yellow", "Black", "Pantone 877 C"],
+        dot_gain: {"Pantone 877 C" => 0.7},
+      )
+      hints = nchan.to_array(PDF::Objects::Reference.new(7))[4]
+        .as(PDF::Objects::Dictionary)["MixingHints"].as(PDF::Objects::Dictionary)
+
+      solidities = hints["Solidities"].as(PDF::Objects::Dictionary)
+      solidities["Pantone 877 C"].to_pdf.should eq("1")
+      solidities["Default"].to_pdf.should eq("0")
+
+      order = hints["PrintingOrder"].as(PDF::Objects::Array)
+      order.size.should eq(5)
+      order[4].to_pdf.should eq("/Pantone#20877#20C")
+
+      dg = hints["DotGain"].as(PDF::Objects::Dictionary)
+      fn = dg["Pantone 877 C"].as(PDF::Objects::Dictionary)
+      fn["FunctionType"].to_pdf.should eq("2")
+      fn["Domain"].to_pdf.should eq("[0 1]")
+      fn["Range"].to_pdf.should eq("[0 1]")
+      fn["N"].to_pdf.should eq("0.7")
+    end
+
+    it "requires /PrintingOrder when /Solidities is given (§ 8.6.6.5)" do
+      expect_raises(ArgumentError, /requires \/PrintingOrder/) do
+        PDF::ColorSpaces::NChannel.new(
+          names: ["Cyan", "Magenta", "Yellow", "Black"],
+          alternate: PDF::ColorSpaces::ICCBased.fogra39,
+          c1_per_component: [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+          ],
+          solidities: {"Cyan" => 0.5}, # no printing_order
+        )
+      end
+    end
+
+    it "rejects a solidity outside [0, 1]" do
+      expect_raises(ArgumentError, /must be in \[0, 1\]/) do
+        PDF::ColorSpaces::NChannel.new(
+          names: ["Cyan", "Magenta", "Yellow", "Black"],
+          alternate: PDF::ColorSpaces::ICCBased.fogra39,
+          c1_per_component: [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+          ],
+          solidities: {"Cyan" => 1.5},
+          printing_order: ["Cyan", "Magenta", "Yellow", "Black"],
+        )
+      end
+    end
+
+    it "rejects a /PrintingOrder name not among the colorants" do
+      expect_raises(ArgumentError, /not among the colorant names/) do
+        PDF::ColorSpaces::NChannel.new(
+          names: ["Cyan", "Magenta", "Yellow", "Black"],
+          alternate: PDF::ColorSpaces::ICCBased.fogra39,
+          c1_per_component: [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+          ],
+          printing_order: ["Cyan", "Magenta", "Yellow", "Spot"],
+        )
+      end
+    end
+
+    it "rejects a non-positive /DotGain exponent" do
+      expect_raises(ArgumentError, /exponent must be > 0/) do
+        PDF::ColorSpaces::NChannel.new(
+          names: ["Cyan", "Magenta", "Yellow", "Black"],
+          alternate: PDF::ColorSpaces::ICCBased.fogra39,
+          c1_per_component: [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+          ],
+          dot_gain: {"Cyan" => 0.0},
+        )
+      end
+    end
+  end
+
   describe "Page integration (NChannel is-a DeviceN)" do
     it "registers and fills through the existing colour-space API" do
       pdf = PDF::Document.new

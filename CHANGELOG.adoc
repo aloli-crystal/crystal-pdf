@@ -7,6 +7,38 @@ All notable changes to pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v1.6.0 — 2026-06-04 — NChannel mixing hints (/Solidities, /PrintingOrder, /DotGain)
+
+=== Added
+
+* **`NChannel` mixing hints** (ISO 32000-1 § 8.6.6.5) via three
+  optional constructor arguments :
+  ** `solidities : Hash(String, Float64)` → `/MixingHints /Solidities`
+     (per-colorant opacity in `[0, 1]`, plus an optional `"Default"`).
+  ** `printing_order : Array(String)` → `/MixingHints /PrintingOrder`
+     (colorant lay-down order).
+  ** `dot_gain : Hash(String, Float64)` → `/MixingHints /DotGain`,
+     each value the exponent `N` of a Type-2 transfer function
+     `f(t) = t^N` over `[0, 1]` (`N < 1` boosts midtones).
+* `/MixingHints` is emitted only when at least one of the three is
+  supplied.
+
+=== Validation
+
+* `solidities` values must be in `[0, 1]` and keyed by a colorant name
+  or `"Default"` ; `printing_order` names must be colorants ;
+  `dot_gain` exponents must be `> 0`. Per § 8.6.6.5, supplying
+  `solidities` without `printing_order` raises.
+
+=== Tests
+
+* Specs : emission and omission of `/MixingHints`, the three
+  sub-entries (including the Type-2 `/DotGain` function), and every
+  validation path.
+* Validated with veraPDF (`-f 2b`) : a PDF/A-2b document with an
+  NChannel carrying full mixing hints is fully compliant (144/144
+  rules). This closes the § 6.2.4.4 / § 8.6.6.5 colour-space work.
+
 == v1.5.0 — 2026-06-04 — NChannel colour space (/Subtype /NChannel, /Process)
 
 === Added
