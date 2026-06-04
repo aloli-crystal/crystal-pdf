@@ -4,10 +4,26 @@ module PDF
     # colours sharing a single alternate fallback. Generalisation
     # of `Separation` for N > 1.
     #
-    # Array form : `[/DeviceN [/n1 /n2 ...] <alternate> <tintTransform>]`.
+    # Array form :
+    # `[/DeviceN [/n1 /n2 ...] <alternate> <tintTransform> <attributes>]`.
     # The tint transform maps an N-vector of tint scalars to the
     # alternate colour-space coordinates via a Type-2 function per
     # component, combined into a stitching Type-3 function.
+    #
+    # ## Spot colorants and the /Colorants attributes (PDF/A-2)
+    #
+    # ISO 19005-2 (PDF/A-2) § 6.2.4.4 requires that every *spot*
+    # colorant used in a DeviceN/NChannel space be described by an
+    # entry in the attributes dictionary's `/Colorants` sub-dictionary,
+    # each entry being a `Separation` array `[/Separation /<name>
+    # <alternate> <tintTransform>]`. A spot colorant is any name that
+    # is neither a standard CMYK process ink (`Cyan` / `Magenta` /
+    # `Yellow` / `Black`) nor a reserved name (`None` / `All`).
+    #
+    # `to_array` therefore appends a 5th element — the attributes
+    # dictionary — whenever the space carries at least one spot
+    # colorant. When every component is a process ink or reserved
+    # name the attributes dictionary is optional and is omitted.
     #
     # ## MVP behaviour
     #
@@ -27,6 +43,11 @@ module PDF
     # )
     # ```
     class DeviceN
+      # Standard CMYK process inks plus the two reserved colorant
+      # names. Per ISO 19005-2 § 6.2.4.4 these are NOT spot colorants
+      # and therefore require no `/Colorants` entry.
+      NON_SPOT_COLORANTS = {"Cyan", "Magenta", "Yellow", "Black", "None", "All"}
+
       getter names : Array(String)
       getter alternate : ICCBased
       getter c1_per_component : Array(Array(Float64))
@@ -54,7 +75,43 @@ module PDF
         arr << names_arr
         arr << ColorSpaces.icc_based_space(alternate_ref)
         arr << build_tint_transform
+        if attributes = build_attributes(alternate_ref)
+          arr << attributes
+        end
         arr
+      end
+
+      # A *spot* colorant is any name that is neither a standard CMYK
+      # process ink nor a reserved name (`None` / `All`). Only spot
+      # colorants require a `/Colorants` entry (ISO 19005-2 § 6.2.4.4).
+      private def spot_colorant?(name : String) : Bool
+        !NON_SPOT_COLORANTS.includes?(name)
+      end
+
+      # Builds the attributes dictionary `<< /Colorants << /<name>
+      # <separation_array> ... >> >>` mandated by ISO 19005-2
+      # § 6.2.4.4 for spot colorants. Each spot colorant maps to a
+      # `Separation` array `[/Separation /<name> <alternate>
+      # <tintTransform>]` describing that single ink — reusing the
+      # `Separation` class so the per-colorant tint transform stays
+      # consistent with stand-alone spot colours. The alternate space
+      # and `c1` vector come from this DeviceN's own definition.
+      #
+      # Returns `nil` (and `to_array` omits the 5th element) when the
+      # space carries no spot colorant, since `/Colorants` is only
+      # required in that case (ISO 32000-1 § 8.6.6.5).
+      private def build_attributes(alternate_ref : Objects::Reference) : Objects::Dictionary?
+        colorants = Objects::Dictionary.new
+        @names.each_with_index do |name, i|
+          next unless spot_colorant?(name)
+          separation = Separation.new(name: name, alternate: @alternate, c1: @c1_per_component[i])
+          colorants[name] = separation.to_array(alternate_ref)
+        end
+        return nil if colorants.empty?
+
+        attributes = Objects::Dictionary.new
+        attributes["Colorants"] = colorants
+        attributes
       end
 
       # Tint transform — a Type-4 PostScript function would be more

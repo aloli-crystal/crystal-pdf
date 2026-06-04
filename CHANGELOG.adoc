@@ -7,6 +7,42 @@ All notable changes to pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v1.3.0 — 2026-06-04 — DeviceN spot colorants (/Colorants, PDF/A-2 § 6.2.4.4)
+
+=== Added
+
+* **`DeviceN#to_array` now emits the attributes dictionary** (5th array
+  element) with a `/Colorants` sub-dictionary, as required by ISO
+  19005-2 (PDF/A-2) § 6.2.4.4 : every *spot* colorant of a DeviceN /
+  NChannel space must be described there. Each spot colorant maps to a
+  `Separation` array `[/Separation /<name> <alternate> <tintTransform>]`
+  (reusing the `Separation` class), built from the DeviceN's own
+  alternate space and per-component `c1` vector.
+
+=== Fixed
+
+* A DeviceN space carrying spot colorants previously produced only the
+  4-element form `[/DeviceN [names] alternate tintTransform]` with no
+  `/Colorants` — a latent PDF/A-2 non-conformance (§ 6.2.4.4 t1),
+  analogous to the earlier sRGB v4 output-intent defect.
+
+=== Conformance notes
+
+A *spot* colorant is any name that is neither a standard CMYK process
+ink (`Cyan`/`Magenta`/`Yellow`/`Black`) nor a reserved name
+(`None`/`All`). When a DeviceN carries no spot colorant the attributes
+dictionary is optional and is omitted (ISO 32000-1 § 8.6.6.5).
+
+=== Tests
+
+* Specs : `/Colorants` entry per spot colorant, key encoding matching
+  the names array, omission for all-process / reserved-name spaces, and
+  spot-only filtering when mixed with process inks.
+* Validated with veraPDF (`-f 2b`) : a PDF/A-2b document using a DeviceN
+  spot space passes § 6.2.4.4 (144/144 rules, fully compliant) ; the
+  same document built without `/Colorants` fails exactly clause 6.2.4.4
+  test 1.
+
 == v1.2.0 — 2026-06-03 — TJ and Tc operators (positioning and spacing)
 
 === Added
