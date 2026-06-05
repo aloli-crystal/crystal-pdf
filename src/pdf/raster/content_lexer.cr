@@ -9,11 +9,13 @@ module PDF
     # jetons. Le rendu des images en ligne est hors périmètre du MVP.
     module ContentLexer
       # Un jeton du flux de contenu. `kind` ∈ {:num, :name, :str, :op,
-      # :array_start, :array_end, :dict_start, :dict_end}.
+      # :array_start, :array_end, :dict_start, :dict_end}. Pour `:str`,
+      # `bytes` porte le contenu décodé (utile au rendu de texte).
       record Token,
         kind : Symbol,
         num : Float64 = 0.0,
-        text : String = ""
+        text : String = "",
+        bytes : Bytes = Bytes.empty
 
       WHITESPACE = {' ', '\t', '\r', '\n', '\f', '\0'}
       DELIMITERS = {'(', ')', '<', '>', '[', ']', '{', '}', '/', '%'}
@@ -105,32 +107,81 @@ module PDF
         i = start + 1
         n = data.size
         depth = 1
+        buf = IO::Memory.new
         while i < n && depth > 0
           c = data[i]
           if c == '\\'.ord
-            i += 2
-            next
+            i += 1
+            break if i >= n
+            e = data[i].unsafe_chr
+            case e
+            when 'n'  then buf.write_byte(0x0A_u8); i += 1
+            when 'r'  then buf.write_byte(0x0D_u8); i += 1
+            when 't'  then buf.write_byte(0x09_u8); i += 1
+            when 'b'  then buf.write_byte(0x08_u8); i += 1
+            when 'f'  then buf.write_byte(0x0C_u8); i += 1
+            when '('  then buf.write_byte('('.ord.to_u8); i += 1
+            when ')'  then buf.write_byte(')'.ord.to_u8); i += 1
+            when '\\' then buf.write_byte('\\'.ord.to_u8); i += 1
+            when '\n' then i += 1 # continuation de ligne
+            when '\r' then i += 1; i += 1 if i < n && data[i].unsafe_chr == '\n'
+            else
+              if '0' <= e <= '7'
+                val = 0
+                k = 0
+                while k < 3 && i < n && '0' <= data[i].unsafe_chr <= '7'
+                  val = val * 8 + (data[i] - '0'.ord)
+                  i += 1
+                  k += 1
+                end
+                buf.write_byte((val & 0xFF).to_u8)
+              else
+                buf.write_byte(data[i]); i += 1
+              end
+            end
           elsif c == '('.ord
             depth += 1
+            buf.write_byte(c)
+            i += 1
           elsif c == ')'.ord
             depth -= 1
+            buf.write_byte(c) if depth > 0
+            i += 1
+          else
+            buf.write_byte(c)
+            i += 1
           end
-          i += 1
         end
-        # Contenu non décodé : le rendu de texte est hors MVP.
-        tokens << Token.new(:str)
+        tokens << Token.new(:str, bytes: buf.to_slice)
         i
       end
 
       private def self.lex_hex_string(data : Bytes, start : Int32, tokens : Array(Token)) : Int32
         i = start + 1
         n = data.size
+        nibbles = [] of UInt8
         while i < n && data[i].unsafe_chr != '>'
+          c = data[i].unsafe_chr
+          if v = hex_value(c)
+            nibbles << v
+          end
           i += 1
         end
         i += 1 if i < n
-        tokens << Token.new(:str)
+        nibbles << 0_u8 if nibbles.size.odd?
+        bytes = Bytes.new(nibbles.size // 2)
+        (0...bytes.size).each { |j| bytes[j] = (nibbles[j * 2] << 4 | nibbles[j * 2 + 1]) }
+        tokens << Token.new(:str, bytes: bytes)
         i
+      end
+
+      private def self.hex_value(c : Char) : UInt8?
+        case c
+        when '0'..'9' then (c.ord - '0'.ord).to_u8
+        when 'a'..'f' then (c.ord - 'a'.ord + 10).to_u8
+        when 'A'..'F' then (c.ord - 'A'.ord + 10).to_u8
+        else               nil
+        end
       end
 
       private def self.skip_inline_image(data : Bytes, start : Int32) : Int32

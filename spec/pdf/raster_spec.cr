@@ -49,6 +49,34 @@ describe PDF::Raster::Interpreter do
   end
 end
 
+describe "PDF::Raster — rendu de texte" do
+  it "rend les glyphes d'une fonte TrueType embarquée" do
+    pdf = PDF::Document.new
+    ttf = PDF::Fonts::TrueTypeFont.load("spec/fixtures/fonts/DejaVuSans.ttf")
+    pdf.page do |p|
+      p.font(ttf, 40)
+      p.text("HII", at: {100, 700})
+    end
+    reader = PDF::Reader.open(IO::Memory.new(pdf.to_slice))
+    canvas = PDF::Raster.render_page(reader, 0, dpi: 72)
+
+    # Compte les pixels noirs (texte) dans la bande où le texte est posé.
+    # Texte à y≈700 pt ; en device (72 dpi, h=792) top ≈ 792-740..792-700.
+    ink = 0
+    (60..130).each do |y|
+      (90..260).each do |x|
+        px = canvas.pixels[x, y]
+        ink += 1 if (px.r >> 8) < 128
+      end
+    end
+    ink.should be > 50 # des glyphes ont bien été remplis
+
+    # Une zone vide reste blanche.
+    empty = canvas.pixels[400, 400]
+    {empty.r >> 8, empty.g >> 8, empty.b >> 8}.should eq({255, 255, 255})
+  end
+end
+
 describe PDF::Raster do
   it "rend une page générée en PNG avec les bonnes dimensions" do
     pdf = PDF::Document.new

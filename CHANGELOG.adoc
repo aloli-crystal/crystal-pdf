@@ -7,6 +7,32 @@ All notable changes to pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v1.12.0 — 2026-06-06 — Rasterizer : text rendering (embedded TrueType glyphs)
+
+=== Added
+
+* **Text rendering in `PDF::Raster`** — the rasterizer now draws glyphs,
+  not just vector graphics. Real pages (table of contents, body text…)
+  render legibly.
+  ** `Raster::Glyph` — TrueType `glyf` outline extraction : simple and
+     composite glyphs, on/off-curve points, quadratic-Bézier
+     flattening.
+  ** `Raster::Font` — loads the embedded TrueType program (`/FontFile2`)
+     of a PDF font, exposes glyph contours and advances, and decodes
+     codes → GID. Covers composite Type0 fonts (CIDFontType2,
+     Identity-H, 2-byte codes, `CIDToGIDMap`) and simple TrueType fonts
+     (1-byte via `cmap`).
+  ** `Raster::Interpreter` — full text state and operators (BT/ET, Tf,
+     Td/TD/Tm/T*, TL/Tc/Tw/Tz/Ts/Tr, Tj/TJ/'/"), with the text
+     rendering matrix and per-glyph advance. The content lexer now
+     decodes string operands (literal escapes + hex).
+
+=== Note
+
+* Still not rendered : images (image XObjects), Type1/CFF (non-TrueType)
+  fonts — those text runs are skipped. Clipping (W/W*) and blend modes
+  remain unhonoured. Next milestone : images.
+
 == v1.11.0 — 2026-06-06 — Native rasterizer : `pdftoppm` / `pdftocairo` (MVP, no ghostscript)
 
 === Added

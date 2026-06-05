@@ -7,6 +7,33 @@ Toutes les évolutions notables de pdf sont consignées ici. Le
 format suit https://keepachangelog.com/fr/1.1.0/[Keep a Changelog] et
 le versionnage respecte https://semver.org/lang/fr/[SemVer].
 
+== v1.12.0 — 2026-06-06 — Rasterizer : rendu du texte (glyphes TrueType embarqués)
+
+=== Ajouté
+
+* **Rendu du texte dans `PDF::Raster`** — le rasterizer dessine
+  désormais les glyphes, plus seulement le vectoriel. Les vraies pages
+  (table des matières, corps de texte…) s'affichent lisiblement.
+  ** `Raster::Glyph` — extraction des contours TrueType (`glyf`) :
+     glyphes simples et composites, points on/off-curve, aplatissement
+     des Bézier quadratiques.
+  ** `Raster::Font` — charge le programme TrueType embarqué
+     (`/FontFile2`) d'une fonte PDF, expose les contours et avances des
+     glyphes, et décode codes → GID. Couvre les fontes composites Type0
+     (CIDFontType2, Identity-H, codes 2 octets, `CIDToGIDMap`) et les
+     fontes TrueType simples (1 octet via `cmap`).
+  ** `Raster::Interpreter` — état et opérateurs de texte complets
+     (BT/ET, Tf, Td/TD/Tm/T*, TL/Tc/Tw/Tz/Ts/Tr, Tj/TJ/'/"), avec la
+     matrice de rendu de texte et l'avance par glyphe. Le lexer décode
+     désormais les chaînes (échappements littéraux + hexadécimal).
+
+=== Note
+
+* Toujours pas rendus : les images (XObjects image), les fontes
+  Type1/CFF (non-TrueType) — ces passages de texte sont ignorés. Le
+  détourage (W/W*) et les modes de fusion restent non honorés. Jalon
+  suivant : les images.
+
 == v1.11.0 — 2026-06-06 — Rasterizer natif : `pdftoppm` / `pdftocairo` (MVP, sans ghostscript)
 
 === Ajouté

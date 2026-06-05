@@ -1,35 +1,48 @@
 module PDF
   module Raster
-    # Interprète un flux de contenu PDF et peint le résultat vectoriel
-    # sur une `Canvas`. MVP : chemins (construction + remplissage +
-    # trait), graphismes d'état (q/Q/cm/w), couleurs Device
-    # (gray/rgb/cmyk + sc/scn par nombre de composantes).
+    # Interprète un flux de contenu PDF et peint le résultat sur une
+    # `Canvas` : chemins (construction + remplissage + trait), état
+    # graphique (q/Q/cm/w), couleurs Device, et **texte** (rendu des
+    # glyphes des fontes TrueType embarquées).
     #
-    # Hors périmètre du MVP (les opérateurs sont consommés sans effet
-    # visible) : texte (BT…ET), images (Do, images en ligne), motifs,
-    # détourage (W/W*), fondu (ca/CA via ExtGState).
+    # Hors périmètre : images (Do, images en ligne), motifs, détourage
+    # (W/W*), fontes Type1/CFF non-TrueType (le texte est alors ignoré).
     class Interpreter
       alias Point = Tuple(Float64, Float64)
 
-      # État graphique courant (pile via q/Q).
+      # État graphique courant (pile via q/Q). Inclut les paramètres de
+      # texte, qui sont sauvegardés/restaurés par q/Q (ISO 32000-1 § 9.3).
       private struct State
         property ctm : Matrix
         property fill : Tuple(Float64, Float64, Float64)
         property stroke : Tuple(Float64, Float64, Float64)
         property line_width : Float64
+        property font : Font?
+        property font_size : Float64
+        property char_spacing : Float64
+        property word_spacing : Float64
+        property h_scale : Float64
+        property leading : Float64
+        property rise : Float64
+        property render_mode : Int32
 
-        def initialize(@ctm : Matrix, @fill = {0.0, 0.0, 0.0}, @stroke = {0.0, 0.0, 0.0}, @line_width = 1.0)
+        def initialize(@ctm : Matrix, @fill = {0.0, 0.0, 0.0}, @stroke = {0.0, 0.0, 0.0}, @line_width = 1.0,
+                       @font = nil, @font_size = 0.0, @char_spacing = 0.0, @word_spacing = 0.0,
+                       @h_scale = 1.0, @leading = 0.0, @rise = 0.0, @render_mode = 0)
         end
 
         def dup_state : State
-          State.new(@ctm, @fill, @stroke, @line_width)
+          State.new(@ctm, @fill, @stroke, @line_width, @font, @font_size, @char_spacing,
+            @word_spacing, @h_scale, @leading, @rise, @render_mode)
         end
       end
 
-      # Nombre de segments pour aplatir une courbe de Bézier cubique.
       BEZIER_STEPS = 18
 
-      def initialize(@canvas : Canvas, base_ctm : Matrix)
+      # Tableau en cours de collecte (entre `[` et `]`), nil sinon.
+      @array : Array(ContentLexer::Token)?
+
+      def initialize(@canvas : Canvas, base_ctm : Matrix, @reader : PDF::Reader? = nil, @resources : PDF::Objects::Dictionary? = nil)
         @state = State.new(base_ctm)
         @stack = [] of State
         @path = [] of Canvas::SubPath
@@ -37,9 +50,15 @@ module PDF
         @current = {0.0, 0.0}
         @start = {0.0, 0.0}
         @nums = [] of Float64
+        @last_name = ""
+        @last_string = Bytes.empty
+        @array = nil
+        @last_array = [] of ContentLexer::Token
+        @text_matrix = Matrix.identity
+        @text_line_matrix = Matrix.identity
+        @fonts = {} of String => Font?
       end
 
-      # Exécute un flux de contenu (octets décompressés) sur la toile.
       def run(data : Bytes) : Nil
         ContentLexer.tokenize(data).each { |tok| handle(tok) }
       end
@@ -47,13 +66,31 @@ module PDF
       private def handle(tok : ContentLexer::Token) : Nil
         case tok.kind
         when :num
-          @nums << tok.num
+          if a = @array
+            a << tok
+          else
+            @nums << tok.num
+          end
+        when :str
+          if a = @array
+            a << tok
+          else
+            @last_string = tok.bytes
+          end
+        when :name
+          @last_name = tok.text unless @array
+        when :array_start
+          @array = [] of ContentLexer::Token
+        when :array_end
+          if arr = @array
+            @last_array = arr
+            @array = nil
+          end
         when :op
           execute(tok.text)
           @nums.clear
         else
-          # noms, chaînes, délimiteurs de tableau/dict : ignorés (les
-          # nombres internes seront vidés par le prochain opérateur).
+          # délimiteurs de dict : ignorés
         end
       end
 
@@ -72,7 +109,7 @@ module PDF
         when "h"  then close_subpath
         when "n"  then end_path
         when "W", "W*"
-          # Détourage non implémenté (MVP) : on poursuit sans clip.
+          # détourage non implémenté (MVP)
         when "f", "F", "f*" then paint(fill: true, stroke: false, even_odd: op == "f*")
         when "S"            then paint(fill: false, stroke: true, even_odd: false)
         when "s"            then close_subpath; paint(fill: false, stroke: true, even_odd: false)
@@ -86,12 +123,30 @@ module PDF
         when "K"            then @state.stroke = cmyk(arg(0), arg(1), arg(2), arg(3))
         when "sc", "scn"    then @state.fill = color_from_components
         when "SC", "SCN"    then @state.stroke = color_from_components
+          # --- texte ---
+        when "BT" then @text_matrix = Matrix.identity; @text_line_matrix = Matrix.identity
+        when "ET" then nil # fin de bloc texte
+        when "Tf" then set_font
+        when "Td" then text_move(arg(0), arg(1))
+        when "TD" then @state.leading = -arg(1); text_move(arg(0), arg(1))
+        when "Tm" then set_text_matrix
+        when "T*" then text_move(0.0, -@state.leading)
+        when "TL" then @state.leading = arg(0)
+        when "Tc" then @state.char_spacing = arg(0)
+        when "Tw" then @state.word_spacing = arg(0)
+        when "Tz" then @state.h_scale = arg(0) / 100.0
+        when "Ts" then @state.rise = arg(0)
+        when "Tr" then @state.render_mode = arg(0).to_i
+        when "Tj" then show_text(@last_string)
+        when "TJ" then show_text_array
+        when "'"  then text_move(0.0, -@state.leading); show_text(@last_string)
+        when "\"" then @state.word_spacing = arg(0); @state.char_spacing = arg(1); text_move(0.0, -@state.leading); show_text(@last_string)
         else
-          # Opérateur non géré (texte, images, ExtGState…) : ignoré.
+          # opérateur non géré : ignoré
         end
       end
 
-      # --- Construction de chemin (points transformés par la CTM) ---
+      # --- Chemins ---
 
       private def move_to(x : Float64, y : Float64) : Nil
         flush_subpath
@@ -105,9 +160,6 @@ module PDF
         @subpath << @current
       end
 
-      # Bézier cubique. Les coordonnées passées sont en espace
-      # utilisateur sauf si `pre_transformed` (cas de l'opérateur `v`,
-      # dont le 1er point de contrôle est déjà en device).
       private def curve_to(x1 : Float64, y1 : Float64, x2 : Float64, y2 : Float64, x3 : Float64, y3 : Float64, pre_transformed : Bool = false) : Nil
         p0 = @current
         p1 = pre_transformed ? {x1, y1} : @state.ctm.apply(x1, y1)
@@ -157,13 +209,84 @@ module PDF
         end
         if stroke
           r, g, b = @state.stroke
-          width = @state.line_width * @state.ctm.mean_scale
-          @canvas.stroke(@path, width, r, g, b)
+          @canvas.stroke(@path, @state.line_width * @state.ctm.mean_scale, r, g, b)
         end
         end_path
       end
 
-      # --- Graphismes d'état & couleurs ---
+      # --- Texte ---
+
+      private def set_font : Nil
+        @state.font_size = arg(0)
+        @state.font = resolve_font(@last_name)
+      end
+
+      private def resolve_font(name : String) : Font?
+        return @fonts[name] if @fonts.has_key?(name)
+        font = nil.as(Font?)
+        if (reader = @reader) && (res = @resources)
+          fonts_dict = res["Font"]?
+          fonts_dict = reader.resolve(fonts_dict) if fonts_dict
+          if fd = fonts_dict.as?(PDF::Objects::Dictionary)
+            if entry = fd[name]?
+              if dict = reader.resolve(entry).as?(PDF::Objects::Dictionary)
+                font = Font.load(reader, dict)
+              end
+            end
+          end
+        end
+        @fonts[name] = font
+        font
+      end
+
+      private def set_text_matrix : Nil
+        @text_line_matrix = Matrix.new(arg(0), arg(1), arg(2), arg(3), arg(4), arg(5))
+        @text_matrix = @text_line_matrix
+      end
+
+      private def text_move(tx : Float64, ty : Float64) : Nil
+        @text_line_matrix = Matrix.translate(tx, ty).then(@text_line_matrix)
+        @text_matrix = @text_line_matrix
+      end
+
+      private def show_text_array : Nil
+        @last_array.each do |tok|
+          case tok.kind
+          when :str
+            show_text(tok.bytes)
+          when :num
+            adjust = -tok.num / 1000.0 * @state.font_size * @state.h_scale
+            @text_matrix = Matrix.translate(adjust, 0.0).then(@text_matrix)
+          end
+        end
+      end
+
+      private def show_text(bytes : Bytes) : Nil
+        font = @state.font
+        return unless font
+        return if bytes.empty?
+        invisible = @state.render_mode == 3 || @state.render_mode == 7
+        fs = @state.font_size
+        th = @state.h_scale
+
+        font.decode_to_gids(bytes).each do |gid|
+          unless invisible
+            param = Matrix.new(fs * th, 0.0, 0.0, fs, 0.0, @state.rise)
+            trm = param.then(@text_matrix).then(@state.ctm)
+            r, g, b = @state.fill
+            contours = font.contours(gid).map do |contour|
+              contour.map { |pt| trm.apply(pt[0], pt[1]) }
+            end
+            @canvas.fill(contours, r, g, b) unless contours.empty?
+          end
+          # Avance horizontale.
+          w0 = font.advance(gid)
+          tx = (w0 * fs + @state.char_spacing) * th
+          @text_matrix = Matrix.translate(tx, 0.0).then(@text_matrix)
+        end
+      end
+
+      # --- État & couleurs ---
 
       private def concat_matrix : Nil
         m = Matrix.new(arg(0), arg(1), arg(2), arg(3), arg(4), arg(5))
@@ -178,17 +301,14 @@ module PDF
         PDF::Content::Color.cmyk_to_rgb(c, m, y, k)
       end
 
-      # sc/scn/SC/SCN : on déduit l'espace du nombre de composantes.
       private def color_from_components : Tuple(Float64, Float64, Float64)
         case @nums.size
         when 1 then gray(@nums[0])
         when 3 then {@nums[0], @nums[1], @nums[2]}
         when 4 then cmyk(@nums[0], @nums[1], @nums[2], @nums[3])
-        else        @state.fill # motif/indexé non géré : on garde la couleur courante
+        else        @state.fill
         end
       end
-
-      # --- Helpers ---
 
       private def arg(i : Int32) : Float64
         @nums[i]? || 0.0

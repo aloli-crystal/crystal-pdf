@@ -1,6 +1,8 @@
 require "./raster/matrix"
 require "./raster/canvas"
 require "./raster/content_lexer"
+require "./raster/glyph"
+require "./raster/font"
 require "./raster/interpreter"
 
 module PDF
@@ -39,7 +41,7 @@ module PDF
       # vers pixels périphérique (origine haut-gauche, y vers le bas).
       base = Matrix.new(scale, 0.0, 0.0, -scale, 0.0, height_px.to_f)
 
-      interpreter = Interpreter.new(canvas, base)
+      interpreter = Interpreter.new(canvas, base, reader, page.resources)
       page.content_streams.each { |stream| interpreter.run(stream) }
 
       canvas
