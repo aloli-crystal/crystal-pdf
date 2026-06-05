@@ -124,6 +124,47 @@ describe "PDF::Raster — rendu d'images" do
   end
 end
 
+describe "PDF::Raster — détourage (W/W*)" do
+  it "confine la peinture au rectangle de clip" do
+    canvas = PDF::Raster::Canvas.new(400, 400)
+    base = PDF::Raster::Matrix.new(1.0, 0.0, 0.0, -1.0, 0.0, 400.0)
+    interp = PDF::Raster::Interpreter.new(canvas, base)
+    # Clip [100,300]², puis remplit tout en rouge.
+    interp.run("q 100 100 200 200 re W n 1 0 0 rg 0 0 600 600 re f Q".to_slice)
+
+    inside = canvas.pixels[200, 200]
+    {inside.r >> 8, inside.g >> 8, inside.b >> 8}.should eq({255, 0, 0})
+    outside = canvas.pixels[40, 40]
+    {outside.r >> 8, outside.g >> 8, outside.b >> 8}.should eq({255, 255, 255})
+  end
+end
+
+describe "PDF::Raster — masque doux (/SMask)" do
+  it "composite une image RGBA en laissant transparaître le fond" do
+    pdf = PDF::Document.new
+    png = PDF::Images::PNG.load("spec/fixtures/images/test_rgba.png")
+    pdf.page do |p|
+      p.fill_color("00FF00")
+      p.rectangle(0, 0, 612, 792)
+      p.fill
+      p.image(png, at: {100, 500}, width: 200, height: 200)
+    end
+    reader = PDF::Reader.open(IO::Memory.new(pdf.to_slice))
+    canvas = PDF::Raster.render_page(reader, 0, dpi: 72)
+
+    # Dans la zone de l'image, le fond vert reste visible là où l'alpha
+    # est faible (bords du dégradé).
+    green = 0
+    (280..420).each do |y|
+      (100..300).each do |x|
+        px = canvas.pixels[x, y]
+        green += 1 if (px.g >> 8) > 200 && (px.r >> 8) < 100 && (px.b >> 8) < 100
+      end
+    end
+    green.should be > 1000
+  end
+end
+
 describe "PDF::Raster::Canvas#downsample" do
   it "moyenne les blocs (un noir + trois blancs → gris ~191)" do
     c = PDF::Raster::Canvas.new(2, 2)

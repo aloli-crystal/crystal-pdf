@@ -18,8 +18,26 @@ module PDF
       getter height : Int32
       getter pixels : StumpyCore::Canvas
 
+      # Rectangle de détourage courant (x0, y0, x1, y1 inclus, en
+      # pixels) — nil = pas de détourage. Approximation par boîte
+      # englobante du chemin de clip (couvre les clips rectangulaires).
+      @clip : Tuple(Int32, Int32, Int32, Int32)?
+
       def initialize(@width : Int32, @height : Int32, background : StumpyCore::RGBA = StumpyCore::RGBA::WHITE)
         @pixels = StumpyCore::Canvas.new(@width, @height, background)
+        @clip = nil
+      end
+
+      # Définit (ou retire avec nil) le rectangle de détourage.
+      def clip=(rect : Tuple(Int32, Int32, Int32, Int32)?) : Nil
+        @clip = rect
+      end
+
+      # Compose une couleur (0..1) avec alpha sur un pixel, en
+      # respectant le détourage. Utilisé par le rendu d'images (SMask).
+      def blend(x : Int32, y : Int32, r : Float64, g : Float64, b : Float64, alpha : Float64) : Nil
+        return if alpha <= 0.0
+        put(x, y, rgba(r, g, b), alpha)
       end
 
       # Remplit un chemin (liste de sous-chemins fermés) avec la couleur
@@ -176,6 +194,9 @@ module PDF
 
       private def put(x : Int32, y : Int32, color : StumpyCore::RGBA, alpha : Float64) : Nil
         return if x < 0 || y < 0 || x >= @width || y >= @height
+        if clip = @clip
+          return if x < clip[0] || y < clip[1] || x > clip[2] || y > clip[3]
+        end
         if alpha >= 0.999
           @pixels[x, y] = color
         else

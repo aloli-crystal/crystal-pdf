@@ -7,6 +7,22 @@ Toutes les évolutions notables de pdf sont consignées ici. Le
 format suit https://keepachangelog.com/fr/1.1.0/[Keep a Changelog] et
 le versionnage respecte https://semver.org/lang/fr/[SemVer].
 
+== v1.15.0 — 2026-06-06 — Rasterizer : détourage (W/W*) et masques doux (/SMask)
+
+=== Ajouté
+
+* **Détourage** — les opérateurs `W` / `W*` confinent désormais la
+  peinture suivante (remplissages, traits, texte, images) à la zone de
+  clip. Le clip est suivi dans l'état graphique (sauvé/restauré par
+  q/Q) comme la boîte englobante intersectée des chemins de clip (un
+  rectangle — couvre les clips rectangulaires et à coins arrondis
+  courants ; les clips non rectangulaires sont approximés par leur
+  boîte).
+* **Masques doux (`/SMask`)** — les images avec un canal alpha de
+  masque doux (ex. PNG RGBA) se compositent désormais avec une
+  transparence par pixel sur le fond, via le nouveau `Canvas#blend`.
+  `Canvas#clip=` applique le rectangle de détourage à toute peinture.
+
 == v1.14.0 — 2026-06-06 — Rasterizer : anti-aliasing (supersampling)
 
 === Ajouté

@@ -7,6 +7,21 @@ All notable changes to pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v1.15.0 — 2026-06-06 — Rasterizer : clipping (W/W*) and soft masks (/SMask)
+
+=== Added
+
+* **Clipping** — the `W` / `W*` operators now constrain subsequent
+  painting (fills, strokes, text, images) to the clip region. The clip
+  is tracked in the graphics state (saved/restored by q/Q) as the
+  intersected bounding box of the clip paths (a rectangle — covers the
+  common rectangular and rounded-rectangle clips; non-rectangular clips
+  are approximated by their box).
+* **Soft masks (`/SMask`)** — images with a soft-mask alpha channel
+  (e.g. RGBA PNGs) now composite with per-pixel transparency over the
+  background, via the new `Canvas#blend`. `Canvas#clip=` applies the
+  clip rectangle to all painting.
+
 == v1.14.0 — 2026-06-06 — Rasterizer : anti-aliasing (supersampling)
 
 === Added

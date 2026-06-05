@@ -25,15 +25,17 @@ module PDF
         property leading : Float64
         property rise : Float64
         property render_mode : Int32
+        # Rectangle de détourage (x0, y0, x1, y1) en pixels, nil = aucun.
+        property clip : Tuple(Float64, Float64, Float64, Float64)?
 
         def initialize(@ctm : Matrix, @fill = {0.0, 0.0, 0.0}, @stroke = {0.0, 0.0, 0.0}, @line_width = 1.0,
                        @font = nil, @font_size = 0.0, @char_spacing = 0.0, @word_spacing = 0.0,
-                       @h_scale = 1.0, @leading = 0.0, @rise = 0.0, @render_mode = 0)
+                       @h_scale = 1.0, @leading = 0.0, @rise = 0.0, @render_mode = 0, @clip = nil)
         end
 
         def dup_state : State
           State.new(@ctm, @fill, @stroke, @line_width, @font, @font_size, @char_spacing,
-            @word_spacing, @h_scale, @leading, @rise, @render_mode)
+            @word_spacing, @h_scale, @leading, @rise, @render_mode, @clip)
         end
       end
 
@@ -57,6 +59,7 @@ module PDF
         @text_matrix = Matrix.identity
         @text_line_matrix = Matrix.identity
         @fonts = {} of String => Font?
+        @pending_clip = false
       end
 
       def run(data : Bytes) : Nil
@@ -107,9 +110,9 @@ module PDF
         when "y"  then curve_to(arg(0), arg(1), arg(2), arg(3), arg(2), arg(3))
         when "re" then rectangle(arg(0), arg(1), arg(2), arg(3))
         when "h"  then close_subpath
-        when "n"  then end_path
+        when "n"  then flush_subpath; apply_pending_clip; end_path
         when "W", "W*"
-          # détourage non implémenté (MVP)
+          @pending_clip = true # prend effet après le prochain opérateur de peinture
         when "f", "F", "f*" then paint(fill: true, stroke: false, even_odd: op == "f*")
         when "S"            then paint(fill: false, stroke: true, even_odd: false)
         when "s"            then close_subpath; paint(fill: false, stroke: true, even_odd: false)
@@ -165,6 +168,7 @@ module PDF
         subtype = stream["Subtype"]?.try { |s| reader.resolve(s).as?(PDF::Objects::Name).try(&.value) }
         case subtype
         when "Image"
+          sync_clip
           ImagePainter.draw(@canvas, reader, stream, @state.ctm, @state.fill)
         when "Form"
           run_form(reader, stream)
@@ -256,7 +260,11 @@ module PDF
 
       private def paint(fill : Bool, stroke : Bool, even_odd : Bool) : Nil
         flush_subpath
-        return if @path.empty?
+        if @path.empty?
+          apply_pending_clip
+          return
+        end
+        sync_clip
         if fill
           r, g, b = @state.fill
           @canvas.fill(@path, r, g, b, even_odd)
@@ -265,7 +273,50 @@ module PDF
           r, g, b = @state.stroke
           @canvas.stroke(@path, @state.line_width * @state.ctm.mean_scale, r, g, b)
         end
+        apply_pending_clip
         end_path
+      end
+
+      # Synchronise le rectangle de détourage de la toile sur l'état.
+      private def sync_clip : Nil
+        clip = @state.clip
+        unless clip
+          @canvas.clip = nil
+          return
+        end
+        x0 = clip[0].floor.to_i
+        y0 = clip[1].floor.to_i
+        x1 = clip[2].ceil.to_i
+        y1 = clip[3].ceil.to_i
+        @canvas.clip = {x0, y0, x1, y1}
+      end
+
+      # Si un W/W* est en attente, intersecte la boîte englobante du
+      # chemin courant (déjà en pixels device) avec le clip de l'état.
+      private def apply_pending_clip : Nil
+        return unless @pending_clip
+        @pending_clip = false
+        return if @path.empty?
+        min_x = Float64::INFINITY
+        min_y = Float64::INFINITY
+        max_x = -Float64::INFINITY
+        max_y = -Float64::INFINITY
+        @path.each do |sp|
+          sp.each do |pt|
+            min_x = pt[0] if pt[0] < min_x
+            min_y = pt[1] if pt[1] < min_y
+            max_x = pt[0] if pt[0] > max_x
+            max_y = pt[1] if pt[1] > max_y
+          end
+        end
+        return unless min_x.finite? && max_x.finite?
+        box = {min_x, min_y, max_x, max_y}
+        @state.clip = intersect_clip(@state.clip, box)
+      end
+
+      private def intersect_clip(a : Tuple(Float64, Float64, Float64, Float64)?, b : Tuple(Float64, Float64, Float64, Float64)) : Tuple(Float64, Float64, Float64, Float64)
+        return b unless a
+        {Math.max(a[0], b[0]), Math.max(a[1], b[1]), Math.min(a[2], b[2]), Math.min(a[3], b[3])}
       end
 
       # --- Texte ---
@@ -319,6 +370,7 @@ module PDF
         font = @state.font
         return unless font
         return if bytes.empty?
+        sync_clip
         invisible = @state.render_mode == 3 || @state.render_mode == 7
         fs = @state.font_size
         th = @state.h_scale

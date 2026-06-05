@@ -21,9 +21,34 @@ module PDF
         sampler = build_sampler(reader, stream, width, height, fill)
         return unless sampler
 
-        composite(canvas, sampler, ctm)
+        composite(canvas, sampler, alpha_sampler(reader, stream), ctm)
       rescue
         # image illisible : on l'ignore plutôt que de planter le rendu
+      end
+
+      # Construit l'échantillonneur d'alpha à partir du /SMask de
+      # l'image (image DeviceGray donnant la transparence par pixel),
+      # ou nil si absent.
+      private def self.alpha_sampler(reader : PDF::Reader, stream : PDF::Objects::Stream) : Sampler?
+        sm = stream["SMask"]?
+        return nil unless sm
+        mask = reader.resolve(sm).as?(PDF::Objects::Stream)
+        return nil unless mask
+        w = int(reader, mask["Width"]?)
+        h = int(reader, mask["Height"]?)
+        return nil unless w && h && w > 0 && h > 0
+        filter = filter_name(reader, mask["Filter"]?)
+        if filter == "DCTDecode"
+          return jpeg_sampler(mask, w, h)
+        end
+        return nil unless mask.decoded
+        bpc = int(reader, mask["BitsPerComponent"]?) || 8
+        return nil unless bpc == 8
+        data = mask.data
+        Sampler.new(w, h) do |col, row|
+          g = byte_at(data, row * w + col) / 255.0
+          {g, g, g}
+        end
       end
 
       # Échantillonneur : renvoie la couleur RGBA d'un pixel image, ou
@@ -41,7 +66,7 @@ module PDF
         end
       end
 
-      private def self.composite(canvas : Canvas, sampler : Sampler, ctm : Matrix) : Nil
+      private def self.composite(canvas : Canvas, sampler : Sampler, alpha : Sampler?, ctm : Matrix) : Nil
         # Boîte englobante en pixels périphérique (coins du carré unité).
         corners = [ctm.apply(0.0, 0.0), ctm.apply(1.0, 0.0), ctm.apply(1.0, 1.0), ctm.apply(0.0, 1.0)]
         min_x = corners.min_of(&.[0]).floor.to_i
@@ -64,7 +89,13 @@ module PDF
             col = sampler.width - 1 if col >= sampler.width
             row = sampler.height - 1 if row >= sampler.height
             if rgb = sampler.at(col, row)
-              canvas.pixels[px, py] = StumpyCore::RGBA.new(u16(rgb[0]), u16(rgb[1]), u16(rgb[2]), UInt16::MAX)
+              a = 1.0
+              if asamp = alpha
+                acol = (u * asamp.width).to_i.clamp(0, asamp.width - 1)
+                arow = ((1.0 - v) * asamp.height).to_i.clamp(0, asamp.height - 1)
+                a = asamp.at(acol, arow).try(&.[0]) || 1.0
+              end
+              canvas.blend(px, py, rgb[0], rgb[1], rgb[2], a)
             end
           end
         end
@@ -227,10 +258,6 @@ module PDF
 
       private def self.byte_at(data : Bytes, i : Int32) : UInt8
         i >= 0 && i < data.size ? data[i] : 0_u8
-      end
-
-      private def self.u16(v : Float64) : UInt16
-        (v.clamp(0.0, 1.0) * UInt16::MAX).round.to_u16
       end
 
       private def self.int(reader : PDF::Reader, obj : PDF::Objects::Base?) : Int32?
