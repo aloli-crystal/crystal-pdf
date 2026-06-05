@@ -116,6 +116,7 @@ require "./pdf/reader"
 require "./pdf/info"
 require "./pdf/font_info"
 require "./pdf/attachments"
+require "./pdf/image_info"
 
 # Document structure
 require "./pdf/document"

@@ -7,6 +7,28 @@ Toutes les évolutions notables de pdf sont consignées ici. Le
 format suit https://keepachangelog.com/fr/1.1.0/[Keep a Changelog] et
 le versionnage respecte https://semver.org/lang/fr/[SemVer].
 
+== v1.9.0 — 2026-06-05 — `pdfimages` : lister et extraire les images (équivalent poppler-utils)
+
+=== Ajouté
+
+* **`PDF::ImageInfo`** (`src/pdf/image_info.cr`) — énumère et extrait
+  les images d'un document (`/XObject` de sous-type `/Image`, ISO
+  32000-1 § 8.8), équivalent bibliothèque de `pdfimages` de poppler.
+  Parcourt le `/Resources /XObject` de chaque page et descend
+  récursivement dans les Form XObjects (garde de profondeur). Rapporte
+  dimensions, profondeur, espace colorimétrique normalisé
+  (rgb/gray/cmyk/icc/index/sep/devn/lab/mask), nombre de composantes,
+  filtre de codage et taille ; dédup par numéro d'objet.
+* **Extraction d'images** — `#write_to` choisit le format selon le
+  filtre : les images `/DCTDecode` sont écrites en `.jpg` à
+  l'identique (passthrough), les échantillons `/FlateDecode` exportés
+  en Netpbm PPM/PGM/PBM (comme poppler par défaut), les autres filtres
+  conservent leurs octets bruts. Lecture pure — le document source
+  n'est jamais modifié.
+* **Binaire `pdfimages`** (`src/bin/pdfimages.cr`) — nouvelle cible du
+  shard, conventions CLI ALOLI. `--list` (format poppler, plus
+  `--json`), `--save-all -d DOSSIER -o PRÉFIXE`.
+
 == v1.8.0 — 2026-06-05 — `pdfdetach` : lister et extraire les fichiers attachés (équivalent poppler-utils)
 
 === Ajouté
