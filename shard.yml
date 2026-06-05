@@ -1,5 +1,5 @@
 name: pdf
-version: 1.7.0
+version: 1.8.0
 
 description: |
   A pure Crystal library for low-level PDF generation.
@@ -39,3 +39,5 @@ targets:
     main: src/bin/pdfinfo.cr
   pdffonts:
     main: src/bin/pdffonts.cr
+  pdfdetach:
+    main: src/bin/pdfdetach.cr

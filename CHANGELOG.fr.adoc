@@ -7,6 +7,27 @@ Toutes les évolutions notables de pdf sont consignées ici. Le
 format suit https://keepachangelog.com/fr/1.1.0/[Keep a Changelog] et
 le versionnage respecte https://semver.org/lang/fr/[SemVer].
 
+== v1.8.0 — 2026-06-05 — `pdfdetach` : lister et extraire les fichiers attachés (équivalent poppler-utils)
+
+=== Ajouté
+
+* **`PDF::AttachedFile`** (`src/pdf/attachments.cr`) — énumère et
+  extrait les fichiers embarqués d'un document, équivalent
+  bibliothèque de `pdfdetach` de poppler. Trois sources parcourues
+  (ISO 32000-1) :
+  ** arbre de noms `/Root /Names /EmbeddedFiles` (§ 7.11.4),
+  ** associated files `/Root /AF` (§ 14.13 — PDF/A-3, Factur-X,
+     ZUGFeRD),
+  ** annotations `/FileAttachment` des pages (§ 12.5.6.15).
++
+Rapporte le nom (`/UF` puis `/F`, décodé), la description, le type
+MIME, la taille déclarée et `/AFRelationship` ; `#data` restitue les
+octets décompressés. Dédup par numéro d'objet du flux embarqué.
+* **Binaire `pdfdetach`** (`src/bin/pdfdetach.cr`) — nouvelle cible du
+  shard, conventions CLI ALOLI. `--list` (format poppler, plus
+  `--json`), `--save N -o FICHIER`, `--save-all -o DOSSIER`. Lecture
+  pure — le document source n'est jamais modifié.
+
 == v1.7.0 — 2026-06-05 — Outils de métadonnées : `pdfinfo` et `pdffonts` (équivalents poppler-utils)
 
 === Ajouté

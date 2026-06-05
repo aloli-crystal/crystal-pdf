@@ -115,6 +115,7 @@ require "./pdf/reader"
 # `pdffonts` equivalents) — pure metadata reading, no rendering.
 require "./pdf/info"
 require "./pdf/font_info"
+require "./pdf/attachments"
 
 # Document structure
 require "./pdf/document"
