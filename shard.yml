@@ -1,5 +1,5 @@
 name: pdf
-version: 1.10.0
+version: 1.11.0
 
 description: |
   A pure Crystal library for low-level PDF generation.
@@ -45,3 +45,7 @@ targets:
     main: src/bin/pdfimages.cr
   pdfattach:
     main: src/bin/pdfattach.cr
+  pdftoppm:
+    main: src/bin/pdftoppm.cr
+  pdftocairo:
+    main: src/bin/pdftocairo.cr

@@ -7,6 +7,37 @@ Toutes les évolutions notables de pdf sont consignées ici. Le
 format suit https://keepachangelog.com/fr/1.1.0/[Keep a Changelog] et
 le versionnage respecte https://semver.org/lang/fr/[SemVer].
 
+== v1.11.0 — 2026-06-06 — Rasterizer natif : `pdftoppm` / `pdftocairo` (MVP, sans ghostscript)
+
+=== Ajouté
+
+* **`PDF::Raster`** (`src/pdf/raster/`) — un rasterizer PDF en Crystal
+  pur, le moteur derrière `pdftoppm` / `pdftocairo` de poppler, **sans
+  dépendance à ghostscript / cairo**. Ce premier jalon (MVP) rend le
+  contenu **vectoriel** :
+  ** `Raster::Matrix` — transformations affines PDF (CTM, concaténation).
+  ** `Raster::Canvas` — tampon RGBA avec remplissage de polygones par
+     balayage (règles non-zéro et even-odd), tracé de segments épais,
+     export PNG (`stumpy_png`) / PPM (Netpbm).
+  ** `Raster::ContentLexer` — tokeniseur de flux de contenu (opérandes,
+     opérateurs, saut des images en ligne).
+  ** `Raster::Interpreter` — exécute la construction de chemins
+     (m/l/c/v/y/re/h), la peinture (f/f*/S/s/B/B*/b/b*), l'état
+     graphique (q/Q/cm/w) et les couleurs Device (g/rg/k + sc/scn selon
+     le nombre de composantes), avec aplatissement des Bézier.
+  ** `PDF::Raster.render_page(reader, index, dpi)` → `Canvas`.
+* **Binaires `pdftoppm` et `pdftocairo`** (`src/bin/`) — nouvelles
+  cibles du shard, conventions CLI ALOLI. `pdftoppm <doc> [<préfixe>]`
+  (`-r`, `--png`/PPM, `-f`/`-l`, `-p`), `pdftocairo <doc> [<sortie>]`
+  (`-png`, `-r`, `-f`/`-l`, `--singlefile`, `-p`).
+
+=== Note
+
+* **Périmètre MVP.** Graphismes vectoriels uniquement. Le texte (rendu
+  des glyphes) et les images (XObjects image) sont consommés sans
+  sortie pour l'instant — jalons à venir. Le détourage (W/W*), les
+  motifs et les modes de fusion ne sont pas encore honorés.
+
 == v1.10.0 — 2026-06-05 — `pdfattach` : joindre un fichier à un PDF existant (équivalent poppler-utils)
 
 === Ajouté

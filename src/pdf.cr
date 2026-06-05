@@ -118,6 +118,10 @@ require "./pdf/font_info"
 require "./pdf/attachments"
 require "./pdf/image_info"
 
+# Native PDF rasterizer (pdftoppm / pdftocairo equivalents) — pure
+# Crystal, no ghostscript. MVP: vector rendering.
+require "./pdf/raster"
+
 # Document structure
 require "./pdf/document"
 require "./pdf/page"
