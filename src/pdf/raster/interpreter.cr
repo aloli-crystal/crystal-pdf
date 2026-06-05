@@ -42,7 +42,7 @@ module PDF
       # Tableau en cours de collecte (entre `[` et `]`), nil sinon.
       @array : Array(ContentLexer::Token)?
 
-      def initialize(@canvas : Canvas, base_ctm : Matrix, @reader : PDF::Reader? = nil, @resources : PDF::Objects::Dictionary? = nil)
+      def initialize(@canvas : Canvas, base_ctm : Matrix, @reader : PDF::Reader? = nil, @resources : PDF::Objects::Dictionary? = nil, @depth : Int32 = 0)
         @state = State.new(base_ctm)
         @stack = [] of State
         @path = [] of Canvas::SubPath
@@ -141,9 +141,63 @@ module PDF
         when "TJ" then show_text_array
         when "'"  then text_move(0.0, -@state.leading); show_text(@last_string)
         when "\"" then @state.word_spacing = arg(0); @state.char_spacing = arg(1); text_move(0.0, -@state.leading); show_text(@last_string)
+        when "Do" then do_xobject
         else
           # opérateur non géré : ignoré
         end
+      end
+
+      # --- XObjects (images et forms) ---
+
+      private def do_xobject : Nil
+        reader = @reader
+        res = @resources
+        return unless reader && res
+        xobjects = res["XObject"]?
+        xobjects = reader.resolve(xobjects) if xobjects
+        dict = xobjects.as?(PDF::Objects::Dictionary)
+        return unless dict
+        entry = dict[@last_name]?
+        return unless entry
+        stream = reader.resolve(entry).as?(PDF::Objects::Stream)
+        return unless stream
+
+        subtype = stream["Subtype"]?.try { |s| reader.resolve(s).as?(PDF::Objects::Name).try(&.value) }
+        case subtype
+        when "Image"
+          ImagePainter.draw(@canvas, reader, stream, @state.ctm, @state.fill)
+        when "Form"
+          run_form(reader, stream)
+        end
+      end
+
+      private def run_form(reader : PDF::Reader, stream : PDF::Objects::Stream) : Nil
+        return if @depth >= 8
+        form_ctm = form_matrix(reader, stream).then(@state.ctm)
+        form_res = stream["Resources"]?
+        form_res = reader.resolve(form_res) if form_res
+        res = form_res.as?(PDF::Objects::Dictionary) || @resources
+        child = Interpreter.new(@canvas, form_ctm, reader, res, @depth + 1)
+        child.inherit_fill(@state.fill)
+        child.run(stream.data)
+      end
+
+      # Hérite la couleur de remplissage courante (les forms héritent de
+      # l'état graphique de l'appelant).
+      protected def inherit_fill(color : Tuple(Float64, Float64, Float64)) : Nil
+        @state.fill = color
+      end
+
+      private def form_matrix(reader : PDF::Reader, stream : PDF::Objects::Stream) : Matrix
+        m = stream["Matrix"]?
+        m = reader.resolve(m) if m
+        if arr = m.as?(PDF::Objects::Array)
+          if arr.size == 6
+            v = arr.map { |e| reader.resolve(e).as?(PDF::Objects::Number).try(&.to_f64) || 0.0 }
+            return Matrix.new(v[0], v[1], v[2], v[3], v[4], v[5])
+          end
+        end
+        Matrix.identity
       end
 
       # --- Chemins ---

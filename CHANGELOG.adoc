@@ -7,6 +7,29 @@ All notable changes to pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v1.13.0 — 2026-06-06 — Rasterizer : image rendering (XObjects, Do)
+
+=== Added
+
+* **Image compositing in `PDF::Raster`** — the `Do` operator now paints
+  image XObjects onto the canvas, mapped through the CTM (inverse-CTM
+  device sampling over the unit square).
+  ** `Raster::ImagePainter` — decodes and samples : JPEG (`/DCTDecode`,
+     via `stumpy_jpeg`), `/FlateDecode` samples in DeviceRGB / Gray /
+     CMYK (8-bit), `/Indexed` palettes, and `/ImageMask` stencils
+     (painted in the current fill colour). Unsupported filters
+     (CCITT/JPX/JBIG2) and exotic depths are skipped.
+  ** `Raster::Matrix#inverse` — affine inverse for the device→image map.
+  ** Form XObjects (`Do` on a `/Subtype /Form`) are now recursed into
+     (depth-guarded), applying the form `/Matrix` and resources — so
+     images and vectors nested in forms render too.
+
+=== Note
+
+* Still not rendered : Type1/CFF (non-TrueType) text, soft masks
+  (`/SMask` alpha), CCITT/JPX/JBIG2 images. Clipping (W/W*) and blend
+  modes remain unhonoured; rendering is aliased (hard edges).
+
 == v1.12.0 — 2026-06-06 — Rasterizer : text rendering (embedded TrueType glyphs)
 
 === Added

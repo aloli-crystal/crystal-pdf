@@ -53,6 +53,20 @@ module PDF
         {@a * x + @c * y + @e, @b * x + @d * y + @f}
       end
 
+      # Inverse de la transformation affine. Retourne l'identité si la
+      # matrice est singulière (déterminant ~ 0).
+      def inverse : Matrix
+        det = @a * @d - @c * @b
+        return Matrix.identity if det.abs < 1e-12
+        ia = @d / det
+        ic = -@c / det
+        ib = -@b / det
+        id = @a / det
+        ie = -(ia * @e + ic * @f)
+        if_ = -(ib * @e + id * @f)
+        Matrix.new(ia, ib, ic, id, ie, if_)
+      end
+
       # Facteur d'échelle moyen (racine du déterminant absolu) — sert à
       # convertir une largeur de trait de l'espace utilisateur vers les
       # pixels du périphérique.

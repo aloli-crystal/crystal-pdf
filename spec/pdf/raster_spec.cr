@@ -77,6 +77,53 @@ describe "PDF::Raster — rendu de texte" do
   end
 end
 
+describe "PDF::Raster — rendu d'images" do
+  it "composite une image JPEG embarquée (DCTDecode)" do
+    pdf = PDF::Document.new
+    jpeg = PDF::Images::JPEG.load("spec/fixtures/images/test_rgb.jpg")
+    pdf.page do |p|
+      p.image(jpeg, at: {100, 600}, width: 120, height: 120)
+    end
+    reader = PDF::Reader.open(IO::Memory.new(pdf.to_slice))
+    canvas = PDF::Raster.render_page(reader, 0, dpi: 72)
+
+    # Des pixels colorés (non gris) apparaissent dans la zone de l'image.
+    colored = 0
+    (140..240).each do |y|
+      (110..210).each do |x|
+        px = canvas.pixels[x, y]
+        r, g, b = (px.r >> 8).to_i, (px.g >> 8).to_i, (px.b >> 8).to_i
+        colored += 1 if (r - b).abs > 40
+      end
+    end
+    colored.should be > 100
+
+    # Hors image : blanc.
+    empty = canvas.pixels[450, 300]
+    {empty.r >> 8, empty.g >> 8, empty.b >> 8}.should eq({255, 255, 255})
+  end
+
+  it "composite une image PNG embarquée (FlateDecode RGB)" do
+    pdf = PDF::Document.new
+    png = PDF::Images::PNG.load("spec/fixtures/images/test_rgb.png")
+    pdf.page do |p|
+      p.image(png, at: {100, 600}, width: 120, height: 120)
+    end
+    reader = PDF::Reader.open(IO::Memory.new(pdf.to_slice))
+    canvas = PDF::Raster.render_page(reader, 0, dpi: 72)
+
+    colored = 0
+    (140..240).each do |y|
+      (110..210).each do |x|
+        px = canvas.pixels[x, y]
+        r, b = (px.r >> 8).to_i, (px.b >> 8).to_i
+        colored += 1 if (r - b).abs > 40
+      end
+    end
+    colored.should be > 100
+  end
+end
+
 describe PDF::Raster do
   it "rend une page générée en PNG avec les bonnes dimensions" do
     pdf = PDF::Document.new

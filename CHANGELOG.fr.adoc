@@ -7,6 +7,33 @@ Toutes les évolutions notables de pdf sont consignées ici. Le
 format suit https://keepachangelog.com/fr/1.1.0/[Keep a Changelog] et
 le versionnage respecte https://semver.org/lang/fr/[SemVer].
 
+== v1.13.0 — 2026-06-06 — Rasterizer : rendu des images (XObjects, Do)
+
+=== Ajouté
+
+* **Compositing d'images dans `PDF::Raster`** — l'opérateur `Do` peint
+  désormais les XObjects image sur la toile, en passant par la CTM
+  (échantillonnage périphérique par CTM inverse sur le carré unité).
+  ** `Raster::ImagePainter` — décode et échantillonne : JPEG
+     (`/DCTDecode`, via `stumpy_jpeg`), échantillons `/FlateDecode` en
+     DeviceRGB / Gray / CMYK (8 bits), palettes `/Indexed`, et masques
+     `/ImageMask` (peints dans la couleur de remplissage courante). Les
+     filtres non gérés (CCITT/JPX/JBIG2) et profondeurs exotiques sont
+     ignorés.
+  ** `Raster::Matrix#inverse` — inverse affine pour le mapping
+     périphérique→image.
+  ** Les Form XObjects (`Do` sur `/Subtype /Form`) sont désormais
+     parcourus récursivement (avec garde de profondeur), en appliquant
+     la `/Matrix` et les ressources du form — les images et vecteurs
+     imbriqués dans des forms s'affichent aussi.
+
+=== Note
+
+* Toujours pas rendus : le texte Type1/CFF (non-TrueType), les masques
+  doux (`/SMask` alpha), les images CCITT/JPX/JBIG2. Le détourage
+  (W/W*) et les modes de fusion restent non honorés ; le rendu est
+  crénelé (arêtes dures).
+
 == v1.12.0 — 2026-06-06 — Rasterizer : rendu du texte (glyphes TrueType embarqués)
 
 === Ajouté

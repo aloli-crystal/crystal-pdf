@@ -3,6 +3,7 @@ require "./raster/canvas"
 require "./raster/content_lexer"
 require "./raster/glyph"
 require "./raster/font"
+require "./raster/image_painter"
 require "./raster/interpreter"
 
 module PDF
