@@ -111,6 +111,11 @@ require "./pdf/parser"
 require "./pdf/reader_page"
 require "./pdf/reader"
 
+# Metadata extraction over an existing document (poppler `pdfinfo`,
+# `pdffonts` equivalents) — pure metadata reading, no rendering.
+require "./pdf/info"
+require "./pdf/font_info"
+
 # Document structure
 require "./pdf/document"
 require "./pdf/page"

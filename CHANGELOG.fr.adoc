@@ -7,6 +7,35 @@ Toutes les évolutions notables de pdf sont consignées ici. Le
 format suit https://keepachangelog.com/fr/1.1.0/[Keep a Changelog] et
 le versionnage respecte https://semver.org/lang/fr/[SemVer].
 
+== v1.7.0 — 2026-06-05 — Outils de métadonnées : `pdfinfo` et `pdffonts` (équivalents poppler-utils)
+
+=== Ajouté
+
+* **`PDF::Info`** (`src/pdf/info.cr`) — extraction des métadonnées d'un
+  document existant, équivalent bibliothèque de `pdfinfo` de
+  poppler :
+  ** champs `/Info` (titre, auteur, sujet, mots-clés, créateur,
+     producteur), avec décodage des chaînes texte PDF (BOM UTF-16BE/LE,
+     PDFDocEncoding) pour restituer correctement les titres accentués.
+  ** `CreationDate` / `ModDate` analysées depuis les chaînes
+     `D:YYYYMMDD…` (ISO 32000-1 § 7.9.4) vers `Time`.
+  ** version PDF, nombre de pages, dimensions de la première page avec
+     nom de format standard (A4, Letter, Legal…), rotation, drapeau de
+     chiffrement, PDF balisé, flux de métadonnées XMP, présence d'un
+     AcroForm, taille du fichier.
+* **`PDF::FontInfo`** (`src/pdf/font_info.cr`) — énumération des fontes,
+  équivalent bibliothèque de `pdffonts` de poppler : parcourt le
+  `/Resources /Font` de chaque page, déduplique par numéro d'objet et
+  rapporte nom, type de programme (Type 1, TrueType, CID TrueType…),
+  encodage, et les drapeaux embarquée / sous-ensemble / unicode.
+  Résout les fontes composites Type0 via `/DescendantFonts`.
+* **Binaires `pdfinfo` et `pdffonts`** (`src/bin/`) — nouvelles cibles
+  du shard, aux conventions CLI ALOLI (`help [<sous-commande>]`,
+  `-h`/`--help`, `-V`/`--version`, un short pour chaque flag long).
+  Sortie au format poppler, plus une variante `--json` homogène avec
+  `pdf2text`. Tous deux accessibles via la façade `alolipdf`
+  (sous-commandes `info` / `fonts`).
+
 == v1.6.0 — 2026-06-04 — Indices de mélange NChannel (/Solidities, /PrintingOrder, /DotGain)
 
 === Ajouté
