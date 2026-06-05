@@ -35,6 +35,14 @@ module PDF
     # Prochain numéro d'objet disponible pour les nouveaux objets
     @next_object_number : Int32
 
+    # Objets indirects ajoutés à émettre lors de la prochaine mise à
+    # jour incrémentale (cf. `add_object`).
+    @added_objects = [] of Objects::Indirect
+
+    # Objets existants modifiés à ré-émettre (numéro d'objet => valeur ;
+    # cf. `replace_object`). Sert notamment à réécrire le catalogue.
+    @modified_objects = {} of Int32 => Objects::Base
+
     # Ouvre un PDF depuis un chemin de fichier. `password` est
     # le mot de passe utilisateur si le PDF est chiffré (vide par
     # défaut, ce qui suffit pour la majorité des PDFs « owner-only
@@ -283,6 +291,45 @@ module PDF
       end
     end
 
+    # Enregistre un nouvel objet indirect à émettre lors de la prochaine
+    # mise à jour incrémentale (`write`/`save`). Alloue un numéro d'objet
+    # libre et renvoie la référence à utiliser pour le pointer.
+    def add_object(value : Objects::Base) : Objects::Reference
+      obj_num = @next_object_number
+      @next_object_number += 1
+      indirect = Objects::Indirect.new(obj_num, 0, value)
+      @added_objects << indirect
+      @objects[obj_num] = indirect
+      indirect.reference
+    end
+
+    # Marque un objet existant comme modifié : sa nouvelle valeur sera
+    # ré-émise lors de la mise à jour incrémentale. Mettre à jour le
+    # catalogue se fait en mutant `catalog` puis en appelant cette
+    # méthode avec `catalog_reference.object_number`.
+    def replace_object(object_number : Int32, value : Objects::Base) : Nil
+      @modified_objects[object_number] = value
+    end
+
+    # Référence indirecte du catalogue (/Root).
+    def catalog_reference : Objects::Reference
+      root = @trailer["Root"]?
+      raise "PDF sans /Root : catalogue introuvable" unless root
+      ref = root.as?(Objects::Reference)
+      raise "/Root n'est pas une référence indirecte" unless ref
+      ref
+    end
+
+    # Dictionnaire du catalogue (/Root), résolu. Mutez-le puis appelez
+    # `replace_object(catalog_reference.object_number, catalog)` pour
+    # persister les changements à la prochaine écriture.
+    def catalog : Objects::Dictionary
+      resolved = resolve(catalog_reference)
+      dict = resolved.as?(Objects::Dictionary)
+      raise "Catalogue /Root illisible" unless dict
+      dict
+    end
+
     # Sauvegarde le PDF modifié dans un fichier (mise à jour incrémentale)
     def save(path : String) : Nil
       File.open(path, "wb") do |file|
@@ -295,9 +342,9 @@ module PDF
       # Écrire les données originales intactes
       io.write(@data)
 
-      # Collecter les nouveaux objets et les pages modifiées
+      # Collecter les nouveaux objets et les objets modifiés
       new_objects = [] of Objects::Indirect
-      modified_page_refs = [] of {Int32, Objects::Dictionary}
+      modified = {} of Int32 => Objects::Base
 
       @pages.each do |page|
         next if page.added_streams.empty?
@@ -315,16 +362,22 @@ module PDF
           update_page_contents(page, obj.reference)
         end
 
-        modified_page_refs << {page.object_number, page.page_dict}
+        modified[page.object_number] = page.page_dict
       end
 
-      return if new_objects.empty? && modified_page_refs.empty?
+      # Objets ajoutés via `add_object` (pièces jointes, etc.)
+      new_objects.concat(@added_objects)
+
+      # Objets existants modifiés via `replace_object` (ex. catalogue)
+      @modified_objects.each { |num, value| modified[num] = value }
+
+      return if new_objects.empty? && modified.empty?
 
       # Position de départ des nouveaux objets
       position = @data.size.to_i64
       new_offsets = {} of Int32 => Int64
 
-      # Écrire les nouveaux objets stream
+      # Écrire les nouveaux objets
       new_objects.each do |obj|
         new_offsets[obj.object_number] = position
         content = obj.to_pdf + "\n"
@@ -332,10 +385,10 @@ module PDF
         position += content.bytesize
       end
 
-      # Écrire les pages modifiées (dictionnaires mis à jour)
-      modified_page_refs.each do |obj_num, dict|
+      # Écrire les objets modifiés (pages, catalogue…)
+      modified.each do |obj_num, value|
         new_offsets[obj_num] = position
-        indirect = Objects::Indirect.new(obj_num, 0, dict)
+        indirect = Objects::Indirect.new(obj_num, 0, value)
         content = indirect.to_pdf + "\n"
         io << content
         position += content.bytesize

@@ -104,6 +104,105 @@ module PDF
       result
     end
 
+    # Attache un fichier à un document déjà ouvert, prêt à être écrit
+    # par `reader.write`/`reader.save` (mise à jour incrémentale —
+    # l'équivalent bibliothèque de `pdfattach`). Le fichier est ajouté
+    # à la fois à l'arbre `/Names /EmbeddedFiles` (visible des viewers)
+    # et à `/AF` (associated files, PDF/A-3 / Factur-X).
+    #
+    # ```
+    # reader = PDF::Reader.open("document.pdf")
+    # PDF::AttachedFile.attach(reader, "facture".to_slice, "factur-x.xml",
+    #   relationship: :data, mime_type: "application/xml")
+    # reader.save("document-avec-pj.pdf")
+    # ```
+    #
+    # Limite connue : si le document possède déjà un arbre
+    # `/EmbeddedFiles` à nœuds intermédiaires (`/Kids`), seuls les
+    # fichiers du nœud racine sont préservés dans l'arbre (tous restent
+    # toutefois listés via `/AF`).
+    def self.attach(
+      reader : PDF::Reader,
+      bytes : Bytes,
+      name : String,
+      description : String? = nil,
+      relationship : Symbol = :unspecified,
+      mime_type : String? = nil,
+      creation_date : Time = Time.utc,
+      modification_date : Time = Time.utc,
+    ) : Nil
+      # 1. Flux du fichier embarqué + dictionnaire de spécification.
+      embedded = PDF::EmbeddedFile.new(
+        data: bytes,
+        mime_type: mime_type,
+        creation_date: creation_date,
+        modification_date: modification_date,
+      )
+      ef_ref = reader.add_object(embedded.to_stream)
+
+      spec = PDF::FileSpec.new(
+        name: name,
+        embedded_file: embedded,
+        description: description,
+        relationship: relationship,
+      )
+      spec_ref = reader.add_object(spec.to_dictionary(ef_ref))
+
+      # 2. Mise à jour du catalogue : /AF + /Names /EmbeddedFiles.
+      catalog = reader.catalog
+      append_to_af(reader, catalog, spec_ref)
+      append_to_embedded_files(reader, catalog, name, spec_ref)
+      reader.replace_object(reader.catalog_reference.object_number, catalog)
+    end
+
+    # Ajoute la référence du filespec au tableau /AF du catalogue
+    # (associated files), en préservant les entrées existantes. Le
+    # tableau est réécrit en ligne pour être ré-émis avec le catalogue.
+    private def self.append_to_af(reader : PDF::Reader, catalog : PDF::Objects::Dictionary, spec_ref : PDF::Objects::Reference) : Nil
+      arr = PDF::Objects::Array.new
+      if existing = catalog["AF"]?
+        if old = reader.resolve(existing).as?(PDF::Objects::Array)
+          old.each { |e| arr << e }
+        end
+      end
+      arr << spec_ref
+      catalog["AF"] = arr
+    end
+
+    # Ajoute [nom, filespec] à l'arbre /Names /EmbeddedFiles du
+    # catalogue, en réécrivant /Names et l'arbre en ligne et en
+    # préservant les autres arbres de noms (/Dests…) et les paires
+    # existantes du nœud racine.
+    private def self.append_to_embedded_files(reader : PDF::Reader, catalog : PDF::Objects::Dictionary, name : String, spec_ref : PDF::Objects::Reference) : Nil
+      # Reconstituer /Names en ligne en conservant les autres clés.
+      names_dict = PDF::Objects::Dictionary.new
+      if existing_names = catalog["Names"]?
+        if nd = reader.resolve(existing_names).as?(PDF::Objects::Dictionary)
+          nd.each { |k, v| names_dict[k] = v }
+        end
+      end
+
+      # Collecter les paires existantes du nœud racine /EmbeddedFiles.
+      pairs = PDF::Objects::Array.new
+      if ef_tree = names_dict["EmbeddedFiles"]?
+        if tree = reader.resolve(ef_tree).as?(PDF::Objects::Dictionary)
+          if tree_names = tree["Names"]?
+            if a = reader.resolve(tree_names).as?(PDF::Objects::Array)
+              a.each { |e| pairs << e }
+            end
+          end
+        end
+      end
+
+      pairs << PDF::Objects::Str.new(name)
+      pairs << spec_ref
+
+      new_tree = PDF::Objects::Dictionary.new
+      new_tree["Names"] = pairs
+      names_dict["EmbeddedFiles"] = new_tree
+      catalog["Names"] = names_dict
+    end
+
     # Construit un `AttachedFile` à partir d'un dictionnaire de
     # spécification de fichier (/Filespec). Retourne nil si la structure
     # est incomplète (pas de flux embarqué exploitable).

@@ -7,6 +7,35 @@ Toutes les évolutions notables de pdf sont consignées ici. Le
 format suit https://keepachangelog.com/fr/1.1.0/[Keep a Changelog] et
 le versionnage respecte https://semver.org/lang/fr/[SemVer].
 
+== v1.10.0 — 2026-06-05 — `pdfattach` : joindre un fichier à un PDF existant (équivalent poppler-utils)
+
+=== Ajouté
+
+* **`PDF::AttachedFile.attach`** — joint un fichier à un document déjà
+  ouvert, équivalent bibliothèque de `pdfattach` de poppler. Le fichier
+  est ajouté à la fois à l'arbre `/Names /EmbeddedFiles` (visibilité
+  dans les viewers) et à `/AF` (associated files — PDF/A-3, Factur-X,
+  ZUGFeRD), en réutilisant les constructeurs `EmbeddedFile` /
+  `FileSpec`. Écrit par mise à jour incrémentale : les octets d'origine
+  sont préservés.
+* **API d'écriture incrémentale générale sur `PDF::Reader`** —
+  `add_object` (ajoute un objet indirect, renvoie sa référence),
+  `replace_object` (ré-émet un objet existant modifié), `catalog` /
+  `catalog_reference` (mute le dictionnaire `/Root`). `Reader#write`
+  les émet désormais aux côtés du chemin existant des flux de contenu
+  de page (filigrane), sans changement de ce comportement.
+* **Binaire `pdfattach`** (`src/bin/pdfattach.cr`) — nouvelle cible du
+  shard, conventions CLI ALOLI. `pdfattach <doc.pdf> <fichier> -o SORTIE
+  [-n NOM -d DESC -m MIME -r RELATION]`. Le document source n'est jamais
+  modifié ; le résultat est écrit dans un nouveau fichier.
+
+=== Note
+
+* Limite connue : joindre à un document possédant déjà un arbre
+  `/EmbeddedFiles` à nœuds intermédiaires (`/Kids`) ne préserve dans
+  l'arbre que les fichiers du nœud racine (tous restent listés via
+  `/AF`).
+
 == v1.9.0 — 2026-06-05 — `pdfimages` : lister et extraire les images (équivalent poppler-utils)
 
 === Ajouté

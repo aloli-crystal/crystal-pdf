@@ -7,6 +7,33 @@ All notable changes to pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v1.10.0 — 2026-06-05 — `pdfattach` : attach a file to an existing PDF (poppler-utils equivalent)
+
+=== Added
+
+* **`PDF::AttachedFile.attach`** — attaches a file to an already-open
+  document, the library equivalent of poppler's `pdfattach`. The file
+  is added both to the `/Names /EmbeddedFiles` name tree (viewer
+  visibility) and to `/AF` (associated files — PDF/A-3, Factur-X,
+  ZUGFeRD), reusing the existing `EmbeddedFile` / `FileSpec` builders.
+  Written via incremental update, so the original bytes are preserved.
+* **General incremental-update API on `PDF::Reader`** — `add_object`
+  (append a new indirect object, returns its reference),
+  `replace_object` (re-emit a modified existing object), `catalog` /
+  `catalog_reference` (mutate the `/Root` dict). `Reader#write` now
+  emits these alongside the existing page-content-stream path
+  (watermarking), with no change to that behaviour.
+* **`pdfattach` binary** (`src/bin/pdfattach.cr`) — new shard target,
+  ALOLI CLI conventions. `pdfattach <doc.pdf> <file> -o OUT
+  [-n NAME -d DESC -m MIME -r RELATIONSHIP]`. The source document is
+  never modified; the result is written to a new file.
+
+=== Note
+
+* Known limitation : attaching to a document that already has an
+  intermediate-node (`/Kids`) `/EmbeddedFiles` tree preserves only the
+  root node's files in the tree (all remain listed via `/AF`).
+
 == v1.9.0 — 2026-06-05 — `pdfimages` : list and extract images (poppler-utils equivalent)
 
 === Added
