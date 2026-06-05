@@ -7,6 +7,21 @@ Toutes les évolutions notables de pdf sont consignées ici. Le
 format suit https://keepachangelog.com/fr/1.1.0/[Keep a Changelog] et
 le versionnage respecte https://semver.org/lang/fr/[SemVer].
 
+== v1.14.0 — 2026-06-06 — Rasterizer : anti-aliasing (supersampling)
+
+=== Ajouté
+
+* **Anti-aliasing dans `PDF::Raster`** par supersampling — le texte,
+  les bords vectoriels et les images s'affichent lisses au lieu de
+  crénelés.
+  ** `PDF::Raster.render_page(..., supersample : Int32 = 1)` effectue le
+     rendu interne à `dpi × supersample`, puis moyenne les blocs pour
+     revenir à `dpi`. `1` = désactivé (exact, inchangé), `2`–`4` =
+     lissage croissant (coût en facteur²).
+  ** `Raster::Canvas#downsample(factor)` — réducteur par moyennage de
+     blocs entiers.
+  ** `pdftoppm` / `pdftocairo` gagnent `-a`/`--antialias N` (défaut 3).
+
 == v1.13.0 — 2026-06-06 — Rasterizer : rendu des images (XObjects, Do)
 
 === Ajouté

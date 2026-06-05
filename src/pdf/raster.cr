@@ -27,9 +27,15 @@ module PDF
 
     # Rend la page d'indice `page_index` (0-based) en une `Canvas`.
     # `dpi` fixe la résolution ; l'arrière-plan est blanc.
-    def self.render_page(reader : PDF::Reader, page_index : Int32, dpi : Int32 = DEFAULT_DPI) : Canvas
+    #
+    # `supersample` active l'anti-aliasing : le rendu interne se fait à
+    # `dpi × supersample`, puis la toile est ré-échantillonnée à `dpi`
+    # en moyennant les blocs. `1` = pas d'anti-aliasing (arêtes dures),
+    # `2`–`4` = lissage croissant (coût mémoire/CPU en facteur²).
+    def self.render_page(reader : PDF::Reader, page_index : Int32, dpi : Int32 = DEFAULT_DPI, supersample : Int32 = 1) : Canvas
       page = reader.pages[page_index]
-      scale = dpi / 72.0
+      ss = supersample < 1 ? 1 : supersample
+      scale = dpi * ss / 72.0
 
       width_px = (page.width * scale).ceil.to_i
       height_px = (page.height * scale).ceil.to_i
@@ -45,7 +51,7 @@ module PDF
       interpreter = Interpreter.new(canvas, base, reader, page.resources)
       page.content_streams.each { |stream| interpreter.run(stream) }
 
-      canvas
+      ss > 1 ? canvas.downsample(ss) : canvas
     end
 
     # Nombre de pages du document (commodité).

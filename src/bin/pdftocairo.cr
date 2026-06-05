@@ -21,6 +21,7 @@ usage = <<-USAGE
   Options :
     -P, --png             Sortie PNG (défaut)
     -r, --resolution DPI  Résolution en points par pouce (défaut 150)
+    -a, --antialias N     Supersampling anti-aliasing 1-4 (défaut 3)
     -f, --first N         Première page
     -l, --last N          Dernière page
     -s, --singlefile      Une seule page → écrit directement <sortie>
@@ -34,6 +35,7 @@ usage = <<-USAGE
   USAGE
 
 dpi = PDF::Raster::DEFAULT_DPI
+antialias = 3
 first_page : Int32? = nil
 last_page : Int32? = nil
 single = false
@@ -43,6 +45,7 @@ parser = OptionParser.new do |op|
   op.banner = usage
   op.on("-P", "--png", "PNG output") { }
   op.on("-r DPI", "--resolution DPI", "Resolution") { |v| dpi = v.to_i? || dpi }
+  op.on("-a N", "--antialias N", "Anti-aliasing factor") { |v| antialias = (v.to_i? || 3).clamp(1, 4) }
   op.on("-f N", "--first N", "First page") { |v| first_page = v.to_i? }
   op.on("-l N", "--last N", "Last page") { |v| last_page = v.to_i? }
   op.on("-s", "--singlefile", "Single file output") { single = true }
@@ -108,7 +111,7 @@ to = from if single
 digits = Math.max(2, count.to_s.size)
 
 (from..to).each do |n|
-  canvas = PDF::Raster.render_page(reader, n - 1, dpi: dpi)
+  canvas = PDF::Raster.render_page(reader, n - 1, dpi: dpi, supersample: antialias)
   dest = single ? (base.ends_with?(".png") ? base : "#{base}.png") : "#{base}-#{n.to_s.rjust(digits, '0')}.png"
   canvas.save_png(dest)
   STDERR.puts "Rendu : #{dest} (#{canvas.width}×#{canvas.height})"

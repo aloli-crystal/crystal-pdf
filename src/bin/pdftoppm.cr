@@ -20,6 +20,7 @@ usage = <<-USAGE
   Options :
     -r, --resolution DPI  Résolution en points par pouce (défaut 150)
     -P, --png             Sortie PNG (défaut : PPM Netpbm)
+    -a, --antialias N     Supersampling anti-aliasing 1-4 (défaut 3)
     -f, --first N         Première page
     -l, --last N          Dernière page
     -p, --password MDP    Mot de passe du document chiffré
@@ -33,6 +34,7 @@ usage = <<-USAGE
 
 dpi = PDF::Raster::DEFAULT_DPI
 png = false
+antialias = 3
 first_page : Int32? = nil
 last_page : Int32? = nil
 password = ""
@@ -41,6 +43,7 @@ parser = OptionParser.new do |op|
   op.banner = usage
   op.on("-r DPI", "--resolution DPI", "Resolution") { |v| dpi = v.to_i? || dpi }
   op.on("-P", "--png", "PNG output") { png = true }
+  op.on("-a N", "--antialias N", "Anti-aliasing factor") { |v| antialias = (v.to_i? || 3).clamp(1, 4) }
   op.on("-f N", "--first N", "First page") { |v| first_page = v.to_i? }
   op.on("-l N", "--last N", "Last page") { |v| last_page = v.to_i? }
   op.on("-p MDP", "--password MDP", "Document password") { |v| password = v }
@@ -105,7 +108,7 @@ digits = Math.max(2, count.to_s.size)
 ext = png ? "png" : "ppm"
 
 (from..to).each do |n|
-  canvas = PDF::Raster.render_page(reader, n - 1, dpi: dpi)
+  canvas = PDF::Raster.render_page(reader, n - 1, dpi: dpi, supersample: antialias)
   dest = "#{prefix}-#{n.to_s.rjust(digits, '0')}.#{ext}"
   if png
     canvas.save_png(dest)

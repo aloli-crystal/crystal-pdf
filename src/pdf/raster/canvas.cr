@@ -44,6 +44,35 @@ module PDF
         end
       end
 
+      # Réduit la toile d'un facteur entier en moyennant des blocs
+      # `factor × factor` — c'est l'étape de ré-échantillonnage du
+      # supersampling (anti-aliasing). Renvoie une nouvelle `Canvas`.
+      def downsample(factor : Int32) : Canvas
+        return self if factor <= 1
+        out_w = @width // factor
+        out_h = @height // factor
+        result = Canvas.new(out_w, out_h)
+        inv = 1.0 / (factor * factor)
+        (0...out_h).each do |ty|
+          (0...out_w).each do |tx|
+            r = 0_u64
+            g = 0_u64
+            b = 0_u64
+            (0...factor).each do |dy|
+              (0...factor).each do |dx|
+                px = @pixels[tx * factor + dx, ty * factor + dy]
+                r += px.r
+                g += px.g
+                b += px.b
+              end
+            end
+            result.pixels[tx, ty] = StumpyCore::RGBA.new(
+              (r * inv).to_u16, (g * inv).to_u16, (b * inv).to_u16, UInt16::MAX)
+          end
+        end
+        result
+      end
+
       # Encode la toile en PNG dans un IO.
       def to_png(io : IO) : Nil
         StumpyPNG.write(@pixels, io)

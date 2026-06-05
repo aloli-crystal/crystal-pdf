@@ -124,6 +124,51 @@ describe "PDF::Raster — rendu d'images" do
   end
 end
 
+describe "PDF::Raster::Canvas#downsample" do
+  it "moyenne les blocs (un noir + trois blancs → gris ~191)" do
+    c = PDF::Raster::Canvas.new(2, 2)
+    c.pixels[0, 0] = StumpyCore::RGBA.new(0_u16, 0_u16, 0_u16, UInt16::MAX)
+    # les 3 autres restent blancs (fond)
+    d = c.downsample(2)
+    d.width.should eq(1)
+    d.height.should eq(1)
+    g = d.pixels[0, 0].r >> 8
+    g.should be_close(191, 2) # (0 + 255*3) / 4 ≈ 191
+  end
+end
+
+describe "PDF::Raster — anti-aliasing (supersampling)" do
+  it "conserve les dimensions cibles et lisse les bords" do
+    # Un triangle : son hypoténuse diagonale crée une couverture
+    # partielle des pixels, donc des gris intermédiaires après réduction.
+    pdf = PDF::Document.new
+    pdf.page do |p|
+      p.fill_color("000000")
+      p.move_to(100, 100)
+      p.line_to(300, 100)
+      p.line_to(100, 300)
+      p.fill
+    end
+    reader = PDF::Reader.open(IO::Memory.new(pdf.to_slice))
+    canvas = PDF::Raster.render_page(reader, 0, dpi: 72, supersample: 3)
+
+    # supersample ne change pas les dimensions finales.
+    canvas.width.should eq(612)
+    canvas.height.should eq(792)
+
+    # Des gris intermédiaires apparaissent (bords lissés), absents d'un
+    # rendu purement noir/blanc.
+    mid = 0
+    canvas.height.times do |y|
+      canvas.width.times do |x|
+        g = canvas.pixels[x, y].r >> 8
+        mid += 1 if g > 40 && g < 215
+      end
+    end
+    mid.should be > 100
+  end
+end
+
 describe PDF::Raster do
   it "rend une page générée en PNG avec les bonnes dimensions" do
     pdf = PDF::Document.new

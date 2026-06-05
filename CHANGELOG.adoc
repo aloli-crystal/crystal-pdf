@@ -7,6 +7,19 @@ All notable changes to pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v1.14.0 — 2026-06-06 — Rasterizer : anti-aliasing (supersampling)
+
+=== Added
+
+* **Anti-aliasing in `PDF::Raster`** via supersampling — text, vector
+  edges and images render smoothly instead of jagged.
+  ** `PDF::Raster.render_page(..., supersample : Int32 = 1)` renders
+     internally at `dpi × supersample`, then box-averages back to `dpi`.
+     `1` = off (exact, unchanged), `2`–`4` = increasing smoothing
+     (cost scales with the square).
+  ** `Raster::Canvas#downsample(factor)` — integer box-average reducer.
+  ** `pdftoppm` / `pdftocairo` gain `-a`/`--antialias N` (default 3).
+
 == v1.13.0 — 2026-06-06 — Rasterizer : image rendering (XObjects, Do)
 
 === Added
