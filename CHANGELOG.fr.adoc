@@ -7,6 +7,19 @@ Toutes les évolutions notables de pdf sont consignées ici. Le
 format suit https://keepachangelog.com/fr/1.1.0/[Keep a Changelog] et
 le versionnage respecte https://semver.org/lang/fr/[SemVer].
 
+== v1.17.0 — 2026-06-06 — Rasterizer : détourage exact (non rectangulaire)
+
+=== Modifié
+
+* **Le détourage est désormais exact** pour les chemins de clip
+  arbitraires, plus seulement une approximation par boîte englobante.
+  `W` / `W*` construisent un masque de couverture par pixel
+  (`Canvas#path_coverage`) intersecté dans l'état graphique ; les
+  rectangles alignés gardent la voie rapide (boîte englobante), tandis
+  que cercles, triangles, rectangles arrondis, etc. sont détourés à
+  leur forme réelle. `Canvas#set_clip` accepte un masque de couverture
+  optionnel en plus de la boîte.
+
 == v1.16.0 — 2026-06-06 — Rasterizer : rendu des fontes Type1/CFF (charstrings Type 2)
 
 === Ajouté

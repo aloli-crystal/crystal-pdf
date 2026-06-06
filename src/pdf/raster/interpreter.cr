@@ -10,6 +10,12 @@ module PDF
     class Interpreter
       alias Point = Tuple(Float64, Float64)
 
+      # Région de détourage : boîte englobante (device, en pixels) +
+      # masque de couverture optionnel pour les formes non rectangulaires.
+      record ClipRegion,
+        bbox : Tuple(Float64, Float64, Float64, Float64),
+        mask : Bytes? = nil
+
       # État graphique courant (pile via q/Q). Inclut les paramètres de
       # texte, qui sont sauvegardés/restaurés par q/Q (ISO 32000-1 § 9.3).
       private struct State
@@ -25,8 +31,8 @@ module PDF
         property leading : Float64
         property rise : Float64
         property render_mode : Int32
-        # Rectangle de détourage (x0, y0, x1, y1) en pixels, nil = aucun.
-        property clip : Tuple(Float64, Float64, Float64, Float64)?
+        # Région de détourage courante, nil = aucune.
+        property clip : ClipRegion?
 
         def initialize(@ctm : Matrix, @fill = {0.0, 0.0, 0.0}, @stroke = {0.0, 0.0, 0.0}, @line_width = 1.0,
                        @font = nil, @font_size = 0.0, @char_spacing = 0.0, @word_spacing = 0.0,
@@ -277,31 +283,44 @@ module PDF
         end_path
       end
 
-      # Synchronise le rectangle de détourage de la toile sur l'état.
+      # Synchronise le détourage de la toile (boîte + masque) sur l'état.
       private def sync_clip : Nil
         clip = @state.clip
         unless clip
-          @canvas.clip = nil
+          @canvas.set_clip(nil)
           return
         end
-        x0 = clip[0].floor.to_i
-        y0 = clip[1].floor.to_i
-        x1 = clip[2].ceil.to_i
-        y1 = clip[3].ceil.to_i
-        @canvas.clip = {x0, y0, x1, y1}
+        bb = clip.bbox
+        rect = {bb[0].floor.to_i, bb[1].floor.to_i, bb[2].ceil.to_i, bb[3].ceil.to_i}
+        @canvas.set_clip(rect, clip.mask)
       end
 
-      # Si un W/W* est en attente, intersecte la boîte englobante du
-      # chemin courant (déjà en pixels device) avec le clip de l'état.
+      # Si un W/W* est en attente, intersecte le chemin courant avec la
+      # région de détourage. Voie rapide pour les rectangles (boîte
+      # seule) ; masque de couverture exact pour les formes complexes.
       private def apply_pending_clip : Nil
         return unless @pending_clip
         @pending_clip = false
         return if @path.empty?
+        box = path_bbox(@path)
+        return unless box
+        old = @state.clip
+        new_box = old ? intersect_box(old.bbox, box) : box
+
+        if rectangular?(@path) && (old.nil? || old.mask.nil?)
+          @state.clip = ClipRegion.new(new_box, nil) # reste un rectangle
+        else
+          path_mask = rectangular?(@path) ? nil : @canvas.path_coverage(@path, false)
+          @state.clip = ClipRegion.new(new_box, combine_masks(old.try(&.mask), path_mask, new_box))
+        end
+      end
+
+      private def path_bbox(path : Array(Canvas::SubPath)) : Tuple(Float64, Float64, Float64, Float64)?
         min_x = Float64::INFINITY
         min_y = Float64::INFINITY
         max_x = -Float64::INFINITY
         max_y = -Float64::INFINITY
-        @path.each do |sp|
+        path.each do |sp|
           sp.each do |pt|
             min_x = pt[0] if pt[0] < min_x
             min_y = pt[1] if pt[1] < min_y
@@ -309,14 +328,49 @@ module PDF
             max_y = pt[1] if pt[1] > max_y
           end
         end
-        return unless min_x.finite? && max_x.finite?
-        box = {min_x, min_y, max_x, max_y}
-        @state.clip = intersect_clip(@state.clip, box)
+        min_x.finite? && max_x.finite? ? {min_x, min_y, max_x, max_y} : nil
       end
 
-      private def intersect_clip(a : Tuple(Float64, Float64, Float64, Float64)?, b : Tuple(Float64, Float64, Float64, Float64)) : Tuple(Float64, Float64, Float64, Float64)
-        return b unless a
+      private def intersect_box(a : Tuple(Float64, Float64, Float64, Float64), b : Tuple(Float64, Float64, Float64, Float64)) : Tuple(Float64, Float64, Float64, Float64)
         {Math.max(a[0], b[0]), Math.max(a[1], b[1]), Math.min(a[2], b[2]), Math.min(a[3], b[3])}
+      end
+
+      # Le chemin est-il un unique rectangle aligné sur les axes ?
+      private def rectangular?(path : Array(Canvas::SubPath)) : Bool
+        return false unless path.size == 1
+        sp = path[0]
+        return false unless 4 <= sp.size <= 5
+        n = sp.size
+        n.times do |i|
+          a = sp[i]
+          b = sp[(i + 1) % n]
+          dx = (a[0] - b[0]).abs
+          dy = (a[1] - b[1]).abs
+          return false unless dx < 0.01 || dy < 0.01
+        end
+        true
+      end
+
+      # Combine (ET) le masque existant et le masque du chemin sur la
+      # boîte d'intersection ; renvoie un masque pleine toile.
+      private def combine_masks(old_mask : Bytes?, path_mask : Bytes?, box : Tuple(Float64, Float64, Float64, Float64)) : Bytes
+        w = @canvas.width
+        h = @canvas.height
+        mask = Bytes.new(w * h, 0_u8)
+        x0 = Math.max(box[0].floor.to_i, 0)
+        y0 = Math.max(box[1].floor.to_i, 0)
+        x1 = Math.min(box[2].ceil.to_i, w - 1)
+        y1 = Math.min(box[3].ceil.to_i, h - 1)
+        (y0..y1).each do |py|
+          row = py * w
+          (x0..x1).each do |px|
+            idx = row + px
+            o = old_mask ? old_mask[idx] : 255_u8
+            p = path_mask ? path_mask[idx] : 255_u8
+            mask[idx] = 255_u8 if o != 0 && p != 0
+          end
+        end
+        mask
       end
 
       # --- Texte ---

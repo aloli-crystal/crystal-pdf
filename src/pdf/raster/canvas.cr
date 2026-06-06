@@ -18,19 +18,25 @@ module PDF
       getter height : Int32
       getter pixels : StumpyCore::Canvas
 
-      # Rectangle de détourage courant (x0, y0, x1, y1 inclus, en
-      # pixels) — nil = pas de détourage. Approximation par boîte
-      # englobante du chemin de clip (couvre les clips rectangulaires).
+      # Boîte englobante du détourage (x0, y0, x1, y1 inclus, en pixels),
+      # nil = pas de détourage. Borne l'itération.
       @clip : Tuple(Int32, Int32, Int32, Int32)?
+
+      # Masque de couverture du détourage (0/255 par pixel) pour les
+      # clips non rectangulaires, nil = clip purement rectangulaire.
+      @clip_mask : Bytes?
 
       def initialize(@width : Int32, @height : Int32, background : StumpyCore::RGBA = StumpyCore::RGBA::WHITE)
         @pixels = StumpyCore::Canvas.new(@width, @height, background)
         @clip = nil
+        @clip_mask = nil
       end
 
-      # Définit (ou retire avec nil) le rectangle de détourage.
-      def clip=(rect : Tuple(Int32, Int32, Int32, Int32)?) : Nil
+      # Définit (ou retire avec nil) la boîte de détourage et un masque
+      # optionnel pour les formes non rectangulaires.
+      def set_clip(rect : Tuple(Int32, Int32, Int32, Int32)?, mask : Bytes? = nil) : Nil
         @clip = rect
+        @clip_mask = mask
       end
 
       # Compose une couleur (0..1) avec alpha sur un pixel, en
@@ -123,9 +129,29 @@ module PDF
         (v.clamp(0.0, 1.0) * UInt16::MAX).round.to_u16
       end
 
-      # Cœur du remplissage : balayage de lignes avec règle even-odd ou
-      # non-zéro. Chaque arête contribue une intersection par scanline.
+      # Construit un masque de couverture (0/255 par pixel) à partir
+      # d'un chemin — sert au détourage exact des clips non rectangulaires.
+      def path_coverage(subpaths : Array(SubPath), even_odd : Bool) : Bytes
+        mask = Bytes.new(@width * @height, 0_u8)
+        each_span(subpaths, even_odd) do |py, x_start, x_end|
+          x0 = Math.max(x_start.round.to_i, 0)
+          x1 = Math.min(x_end.round.to_i, @width)
+          row = py * @width
+          (x0...x1).each { |px| mask[row + px] = 255_u8 }
+        end
+        mask
+      end
+
       private def fill_subpaths(subpaths : Array(SubPath), color : StumpyCore::RGBA, even_odd : Bool, alpha : Float64) : Nil
+        each_span(subpaths, even_odd) do |py, x_start, x_end|
+          span(py, x_start, x_end, color, alpha)
+        end
+      end
+
+      # Cœur du balayage : pour chaque scanline, calcule les segments
+      # couverts (règle even-odd ou non-zéro) et les passe au bloc sous
+      # la forme (py, x_début, x_fin).
+      private def each_span(subpaths : Array(SubPath), even_odd : Bool, &block : Int32, Float64, Float64 ->) : Nil
         # Arêtes : {y_min, y_max, x_at_ymin, dx/dy, winding}.
         y_lo = @height
         y_hi = 0
@@ -157,7 +183,6 @@ module PDF
 
         (y_lo..y_hi).each do |py|
           cy = py + 0.5
-          # Intersections {x, winding}.
           xs = [] of Tuple(Float64, Int32)
           edges.each do |ya, yb, xa, slope, winding|
             next if cy < ya || cy >= yb
@@ -170,7 +195,7 @@ module PDF
           if even_odd
             i = 0
             while i + 1 < xs.size
-              span(py, xs[i][0], xs[i + 1][0], color, alpha)
+              block.call(py, xs[i][0], xs[i + 1][0])
               i += 2
             end
           else
@@ -178,7 +203,7 @@ module PDF
             i = 0
             while i < xs.size - 1
               wind += xs[i][1]
-              span(py, xs[i][0], xs[i + 1][0], color, alpha) if wind != 0
+              block.call(py, xs[i][0], xs[i + 1][0]) if wind != 0
               i += 1
             end
           end
@@ -196,6 +221,9 @@ module PDF
         return if x < 0 || y < 0 || x >= @width || y >= @height
         if clip = @clip
           return if x < clip[0] || y < clip[1] || x > clip[2] || y > clip[3]
+        end
+        if mask = @clip_mask
+          return if mask[y * @width + x] == 0
         end
         if alpha >= 0.999
           @pixels[x, y] = color

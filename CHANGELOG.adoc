@@ -7,6 +7,18 @@ All notable changes to pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v1.17.0 — 2026-06-06 — Rasterizer : exact (non-rectangular) clipping
+
+=== Changed
+
+* **Clipping is now exact** for arbitrary clip paths, not just a
+  bounding-box approximation. `W` / `W*` build a per-pixel coverage
+  mask (`Canvas#path_coverage`) intersected into the graphics state;
+  axis-aligned rectangles keep the cheap bounding-box fast path, while
+  circles, triangles, rounded rectangles, etc. are clipped to their
+  true shape. `Canvas#set_clip` takes an optional coverage mask
+  alongside the bounding box.
+
 == v1.16.0 — 2026-06-06 — Rasterizer : Type1/CFF font rendering (Type 2 charstrings)
 
 === Added

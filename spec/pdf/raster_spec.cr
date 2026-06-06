@@ -137,6 +137,22 @@ describe "PDF::Raster — détourage (W/W*)" do
     outside = canvas.pixels[40, 40]
     {outside.r >> 8, outside.g >> 8, outside.b >> 8}.should eq({255, 255, 255})
   end
+
+  it "détoure exactement une forme non rectangulaire (masque)" do
+    canvas = PDF::Raster::Canvas.new(400, 400)
+    base = PDF::Raster::Matrix.new(1.0, 0.0, 0.0, -1.0, 0.0, 400.0)
+    interp = PDF::Raster::Interpreter.new(canvas, base)
+    # Clip à un triangle, puis remplit tout en rouge.
+    interp.run("100 100 m 300 100 l 100 300 l h W n 1 0 0 rg 0 0 600 600 re f".to_slice)
+
+    # Dans le triangle (pt 150,150 ; x+y<400) → rouge.
+    inside = canvas.pixels[150, 250]
+    inside.r.should eq(UInt16::MAX)
+    # Dans la bbox mais HORS triangle (pt 250,250 ; x+y>400) → blanc :
+    # c'est la preuve du détourage exact (vs boîte englobante).
+    out = canvas.pixels[250, 150]
+    {out.r >> 8, out.g >> 8, out.b >> 8}.should eq({255, 255, 255})
+  end
 end
 
 describe "PDF::Raster — masque doux (/SMask)" do
