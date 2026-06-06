@@ -7,6 +7,18 @@ Toutes les évolutions notables de pdf sont consignées ici. Le
 format suit https://keepachangelog.com/fr/1.1.0/[Keep a Changelog] et
 le versionnage respecte https://semver.org/lang/fr/[SemVer].
 
+== v1.20.0 — 2026-06-06 — Rasterizer : remplissage par motif de dégradé (scn /Pattern)
+
+=== Ajouté
+
+* **Remplissage par motif de dégradé** — remplir un chemin avec un
+  motif de dégradé (`/Pattern cs` + `scn /P`, PatternType 2) peint
+  désormais le dégradé détouré à la forme exacte du chemin (via un
+  masque de couverture), en utilisant la `/Matrix` du motif. Cela
+  complète le flux de dégradés courant aux côtés de l'opérateur direct
+  `sh`. L'opérateur `cs` suit l'espace de couleur Pattern ; les
+  opérateurs de couleur solide annulent tout motif.
+
 == v1.19.0 — 2026-06-06 — Rasterizer : dégradés (shadings axial/radial)
 
 === Ajouté

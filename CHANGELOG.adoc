@@ -7,6 +7,17 @@ All notable changes to pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v1.20.0 — 2026-06-06 — Rasterizer : shading-pattern fills (scn /Pattern)
+
+=== Added
+
+* **Shading-pattern fills** — filling a path with a shading pattern
+  (`/Pattern cs` + `scn /P`, PatternType 2) now paints the gradient
+  clipped to the path's exact shape (via a coverage mask), using the
+  pattern `/Matrix`. This completes the common shading workflow
+  alongside the direct `sh` operator. The `cs` operator tracks the
+  Pattern colour space; solid-colour operators clear any pattern.
+
 == v1.19.0 — 2026-06-06 — Rasterizer : gradients (axial/radial shadings)
 
 === Added

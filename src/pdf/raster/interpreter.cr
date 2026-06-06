@@ -1,12 +1,15 @@
 module PDF
   module Raster
     # Interprète un flux de contenu PDF et peint le résultat sur une
-    # `Canvas` : chemins (construction + remplissage + trait), état
-    # graphique (q/Q/cm/w), couleurs Device, et **texte** (rendu des
-    # glyphes des fontes TrueType embarquées).
+    # `Canvas`. Couvre : chemins (construction, remplissage even-odd/
+    # non-zéro, trait avec tirets et jointures rondes), état graphique
+    # (q/Q/cm/w/d), couleurs Device (gray/RGB/CMYK), **texte** (glyphes
+    # TrueType et CFF/Type1C), **images** (Do, XObjects image + masques
+    # doux), Form XObjects (récursifs), **détourage exact** (W/W*) et
+    # **dégradés** (sh + motifs de remplissage shading).
     #
-    # Hors périmètre : images (Do, images en ligne), motifs, détourage
-    # (W/W*), fontes Type1/CFF non-TrueType (le texte est alors ignoré).
+    # Hors périmètre : images en ligne (BI/ID/EI sautées), fontes Type1
+    # PostScript brutes (sans CFF), shadings maillés, modes de fusion.
     class Interpreter
       alias Point = Tuple(Float64, Float64)
 
@@ -36,16 +39,21 @@ module PDF
         # Motif de tireté (longueurs en espace utilisateur) + décalage.
         property dash : Array(Float64)
         property dash_phase : Float64
+        # Motif de remplissage (nom de ressource /Pattern) + l'espace de
+        # remplissage courant est-il /Pattern ?
+        property fill_pattern : String?
+        property fill_cs_pattern : Bool
 
         def initialize(@ctm : Matrix, @fill = {0.0, 0.0, 0.0}, @stroke = {0.0, 0.0, 0.0}, @line_width = 1.0,
                        @font = nil, @font_size = 0.0, @char_spacing = 0.0, @word_spacing = 0.0,
                        @h_scale = 1.0, @leading = 0.0, @rise = 0.0, @render_mode = 0, @clip = nil,
-                       @dash = [] of Float64, @dash_phase = 0.0)
+                       @dash = [] of Float64, @dash_phase = 0.0, @fill_pattern = nil, @fill_cs_pattern = false)
         end
 
         def dup_state : State
           State.new(@ctm, @fill, @stroke, @line_width, @font, @font_size, @char_spacing,
-            @word_spacing, @h_scale, @leading, @rise, @render_mode, @clip, @dash, @dash_phase)
+            @word_spacing, @h_scale, @leading, @rise, @render_mode, @clip, @dash, @dash_phase,
+            @fill_pattern, @fill_cs_pattern)
         end
       end
 
@@ -55,6 +63,7 @@ module PDF
       @array : Array(ContentLexer::Token)?
 
       def initialize(@canvas : Canvas, base_ctm : Matrix, @reader : PDF::Reader? = nil, @resources : PDF::Objects::Dictionary? = nil, @depth : Int32 = 0)
+        @base_ctm = base_ctm
         @state = State.new(base_ctm)
         @stack = [] of State
         @path = [] of Canvas::SubPath
@@ -129,14 +138,20 @@ module PDF
         when "s"            then close_subpath; paint(fill: false, stroke: true, even_odd: false)
         when "B", "B*"      then paint(fill: true, stroke: true, even_odd: op == "B*")
         when "b", "b*"      then close_subpath; paint(fill: true, stroke: true, even_odd: op == "b*")
-        when "g"            then @state.fill = gray(arg(0))
+        when "g"            then set_fill_color(gray(arg(0)))
         when "G"            then @state.stroke = gray(arg(0))
-        when "rg"           then @state.fill = {arg(0), arg(1), arg(2)}
+        when "rg"           then set_fill_color({arg(0), arg(1), arg(2)})
         when "RG"           then @state.stroke = {arg(0), arg(1), arg(2)}
-        when "k"            then @state.fill = cmyk(arg(0), arg(1), arg(2), arg(3))
+        when "k"            then set_fill_color(cmyk(arg(0), arg(1), arg(2), arg(3)))
         when "K"            then @state.stroke = cmyk(arg(0), arg(1), arg(2), arg(3))
-        when "sc", "scn"    then @state.fill = color_from_components
-        when "SC", "SCN"    then @state.stroke = color_from_components
+        when "cs"           then @state.fill_cs_pattern = (@last_name == "Pattern")
+        when "sc", "scn"
+          if @state.fill_cs_pattern
+            @state.fill_pattern = @last_name
+          else
+            set_fill_color(color_from_components)
+          end
+        when "SC", "SCN" then @state.stroke = color_from_components
           # --- texte ---
         when "BT" then @text_matrix = Matrix.identity; @text_line_matrix = Matrix.identity
         when "ET" then nil # fin de bloc texte
@@ -305,8 +320,12 @@ module PDF
         end
         sync_clip
         if fill
-          r, g, b = @state.fill
-          @canvas.fill(@path, r, g, b, even_odd)
+          if pat = @state.fill_pattern
+            fill_with_pattern(pat, even_odd)
+          else
+            r, g, b = @state.fill
+            @canvas.fill(@path, r, g, b, even_odd)
+          end
         end
         if stroke
           r, g, b = @state.stroke
@@ -317,6 +336,64 @@ module PDF
         end
         apply_pending_clip
         end_path
+      end
+
+      # Fixe une couleur de remplissage solide (annule tout motif).
+      private def set_fill_color(color : Tuple(Float64, Float64, Float64)) : Nil
+        @state.fill = color
+        @state.fill_pattern = nil
+      end
+
+      # Remplit le chemin courant avec un motif de dégradé
+      # (PatternType 2). Le dégradé est détouré à la forme du chemin
+      # (masque de couverture) et rendu via la matrice du motif.
+      private def fill_with_pattern(name : String, even_odd : Bool) : Nil
+        reader = @reader
+        res = @resources
+        return unless reader && res
+        patterns = res["Pattern"]?
+        patterns = reader.resolve(patterns) if patterns
+        pdict = patterns.as?(PDF::Objects::Dictionary)
+        return unless pdict
+        entry = pdict[name]?
+        return unless entry
+        resolved = reader.resolve(entry)
+        pattern = resolved.as?(PDF::Objects::Dictionary) || resolved.as?(PDF::Objects::Stream).try(&.dictionary)
+        return unless pattern
+        ptype = pattern["PatternType"]?.try { |t| reader.resolve(t).as?(PDF::Objects::Number).try(&.to_i64.to_i) }
+        return unless ptype == 2 # seuls les motifs de dégradé (shading patterns)
+
+        sh_obj = pattern["Shading"]?
+        return unless sh_obj
+        sh_resolved = reader.resolve(sh_obj)
+        shading = sh_resolved.as?(PDF::Objects::Dictionary) || sh_resolved.as?(PDF::Objects::Stream).try(&.dictionary)
+        return unless shading
+
+        pattern_ctm = pattern_matrix(reader, pattern).then(@base_ctm)
+
+        # Détoure le dégradé à la forme du chemin (∩ clip courant).
+        box = path_bbox(@path)
+        return unless box
+        old = @state.clip
+        new_box = old ? intersect_box(old.bbox, box) : box
+        path_mask = @canvas.path_coverage(@path, even_odd)
+        mask = combine_masks(old.try(&.mask), path_mask, new_box)
+        rect = {new_box[0].floor.to_i, new_box[1].floor.to_i, new_box[2].ceil.to_i, new_box[3].ceil.to_i}
+        @canvas.set_clip(rect, mask)
+        Shading.render(@canvas, reader, shading, pattern_ctm, rect)
+        sync_clip # restaure le détourage de l'état
+      end
+
+      private def pattern_matrix(reader : PDF::Reader, pattern : PDF::Objects::Dictionary) : Matrix
+        m = pattern["Matrix"]?
+        m = reader.resolve(m) if m
+        if arr = m.as?(PDF::Objects::Array)
+          if arr.size == 6
+            v = arr.map { |e| reader.resolve(e).as?(PDF::Objects::Number).try(&.to_f64) || 0.0 }
+            return Matrix.new(v[0], v[1], v[2], v[3], v[4], v[5])
+          end
+        end
+        Matrix.identity
       end
 
       # Opérateur `d` : motif de tireté `[longueurs] phase`.

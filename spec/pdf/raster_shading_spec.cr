@@ -55,6 +55,41 @@ describe PDF::Raster::Shading do
   end
 end
 
+describe "PDF::Raster — remplissage par motif de dégradé (scn /Pattern)" do
+  it "remplit un chemin avec un dégradé détouré à sa forme" do
+    func = PDF::Objects::Dictionary.new
+    func["FunctionType"] = PDF::Objects::Number.new(2)
+    func["Domain"] = num_array(0, 1)
+    func["C0"] = num_array(1, 0, 0)
+    func["C1"] = num_array(0, 0, 1)
+    func["N"] = PDF::Objects::Number.new(1)
+    sh = PDF::Objects::Dictionary.new
+    sh["ShadingType"] = PDF::Objects::Number.new(2)
+    sh["ColorSpace"] = PDF::Objects::Name.new("DeviceRGB")
+    sh["Coords"] = num_array(0, 0, 100, 0)
+    sh["Function"] = func
+    pat = PDF::Objects::Dictionary.new
+    pat["PatternType"] = PDF::Objects::Number.new(2)
+    pat["Shading"] = sh
+    pd = PDF::Objects::Dictionary.new
+    pd["P1"] = pat
+    res = PDF::Objects::Dictionary.new
+    res["Pattern"] = pd
+
+    reader = PDF::Reader.open("spec/fixtures/single_page.pdf")
+    canvas = PDF::Raster::Canvas.new(100, 100)
+    base = PDF::Raster::Matrix.new(1.0, 0.0, 0.0, -1.0, 0.0, 100.0)
+    interp = PDF::Raster::Interpreter.new(canvas, base, reader, res)
+    # Triangle bas-droit rempli par le dégradé.
+    interp.run("/Pattern cs /P1 scn 0 0 m 100 0 l 100 100 l h f".to_slice)
+
+    inside = canvas.pixels[80, 50] # dans le triangle, x élevé → bleu
+    (inside.b >> 8).to_i.should be > 150
+    out = canvas.pixels[10, 10] # hors triangle → blanc (détourage)
+    {out.r >> 8, out.g >> 8, out.b >> 8}.should eq({255, 255, 255})
+  end
+end
+
 describe PDF::Raster::PdfFunction do
   it "interpole une fonction exponentielle (type 2)" do
     func = PDF::Objects::Dictionary.new
