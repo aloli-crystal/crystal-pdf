@@ -5,6 +5,7 @@ require "./raster/glyph"
 require "./raster/cff_outlines"
 require "./raster/font"
 require "./raster/image_painter"
+require "./raster/shading"
 require "./raster/interpreter"
 
 module PDF

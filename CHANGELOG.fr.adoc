@@ -7,6 +7,27 @@ Toutes les évolutions notables de pdf sont consignées ici. Le
 format suit https://keepachangelog.com/fr/1.1.0/[Keep a Changelog] et
 le versionnage respecte https://semver.org/lang/fr/[SemVer].
 
+== v1.19.0 — 2026-06-06 — Rasterizer : dégradés (shadings axial/radial)
+
+=== Ajouté
+
+* **Dégradés (shadings)** — l'opérateur `sh` peint désormais les
+  dégradés sur la zone de détourage.
+  ** `Raster::Shading` — dégradés axial (type 2, linéaire) et radial
+     (type 3), échantillonnés par pixel via la CTM inverse, en espaces
+     DeviceRGB / Gray / CMYK / ICCBased, honorant `/Extend`.
+  ** `Raster::PdfFunction` — un évaluateur de fonctions PDF (ISO
+     32000-1 § 7.10) : type 2 (interpolation exponentielle), type 3
+     (raccordement) et type 0 (échantillonnée, 1 entrée). Calcule les
+     couleurs du dégradé.
+
+=== Note
+
+* Les shadings maillés (types 4–7) et la fonction calculatrice
+  PostScript (type 4) ne sont pas évalués. Les *motifs* de dégradé
+  utilisés comme couleur de remplissage (`scn /P`) ne sont pas encore
+  câblés (seul l'opérateur direct `sh`).
+
 == v1.18.0 — 2026-06-06 — Rasterizer : traits tiretés et jointures/extrémités rondes
 
 === Ajouté

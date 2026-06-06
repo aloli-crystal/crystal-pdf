@@ -156,9 +156,37 @@ module PDF
         when "'"  then text_move(0.0, -@state.leading); show_text(@last_string)
         when "\"" then @state.word_spacing = arg(0); @state.char_spacing = arg(1); text_move(0.0, -@state.leading); show_text(@last_string)
         when "Do" then do_xobject
+        when "sh" then do_shading
         else
           # opérateur non géré : ignoré
         end
+      end
+
+      # Opérateur `sh` : peint un dégradé sur le détourage courant.
+      private def do_shading : Nil
+        reader = @reader
+        res = @resources
+        return unless reader && res
+        shadings = res["Shading"]?
+        shadings = reader.resolve(shadings) if shadings
+        dict = shadings.as?(PDF::Objects::Dictionary)
+        return unless dict
+        entry = dict[@last_name]?
+        return unless entry
+        resolved = reader.resolve(entry)
+        sh = resolved.as?(PDF::Objects::Dictionary) || resolved.as?(PDF::Objects::Stream).try(&.dictionary)
+        return unless sh
+        sync_clip
+        rect = clip_rect
+        Shading.render(@canvas, reader, sh, @state.ctm, rect)
+      end
+
+      # Boîte de détourage en pixels (Int), ou nil si pas de clip.
+      private def clip_rect : Tuple(Int32, Int32, Int32, Int32)?
+        clip = @state.clip
+        return nil unless clip
+        bb = clip.bbox
+        {bb[0].floor.to_i, bb[1].floor.to_i, bb[2].ceil.to_i, bb[3].ceil.to_i}
       end
 
       # --- XObjects (images et forms) ---

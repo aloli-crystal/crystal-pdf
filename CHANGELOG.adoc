@@ -7,6 +7,25 @@ All notable changes to pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v1.19.0 — 2026-06-06 — Rasterizer : gradients (axial/radial shadings)
+
+=== Added
+
+* **Shadings** — the `sh` operator now paints gradients over the clip
+  region.
+  ** `Raster::Shading` — axial (type 2, linear) and radial (type 3)
+     gradients, sampled per pixel via the inverse CTM, in DeviceRGB /
+     Gray / CMYK / ICCBased colour spaces, honouring `/Extend`.
+  ** `Raster::PdfFunction` — a PDF function evaluator (ISO 32000-1
+     § 7.10) : type 2 (exponential interpolation), type 3 (stitching)
+     and type 0 (1-input sampled). Drives the gradient colours.
+
+=== Note
+
+* Mesh shadings (types 4–7) and the PostScript-calculator function
+  (type 4) are not evaluated. Shading *patterns* used as a fill colour
+  (`scn /P`) are not yet wired (only the direct `sh` operator).
+
 == v1.18.0 — 2026-06-06 — Rasterizer : dashed strokes and round joins/caps
 
 === Added
