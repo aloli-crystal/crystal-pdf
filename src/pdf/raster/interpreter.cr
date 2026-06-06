@@ -33,15 +33,19 @@ module PDF
         property render_mode : Int32
         # Région de détourage courante, nil = aucune.
         property clip : ClipRegion?
+        # Motif de tireté (longueurs en espace utilisateur) + décalage.
+        property dash : Array(Float64)
+        property dash_phase : Float64
 
         def initialize(@ctm : Matrix, @fill = {0.0, 0.0, 0.0}, @stroke = {0.0, 0.0, 0.0}, @line_width = 1.0,
                        @font = nil, @font_size = 0.0, @char_spacing = 0.0, @word_spacing = 0.0,
-                       @h_scale = 1.0, @leading = 0.0, @rise = 0.0, @render_mode = 0, @clip = nil)
+                       @h_scale = 1.0, @leading = 0.0, @rise = 0.0, @render_mode = 0, @clip = nil,
+                       @dash = [] of Float64, @dash_phase = 0.0)
         end
 
         def dup_state : State
           State.new(@ctm, @fill, @stroke, @line_width, @font, @font_size, @char_spacing,
-            @word_spacing, @h_scale, @leading, @rise, @render_mode, @clip)
+            @word_spacing, @h_scale, @leading, @rise, @render_mode, @clip, @dash, @dash_phase)
         end
       end
 
@@ -109,6 +113,7 @@ module PDF
         when "Q"  then @state = @stack.pop? || @state
         when "cm" then concat_matrix
         when "w"  then @state.line_width = arg(0)
+        when "d"  then set_dash
         when "m"  then move_to(arg(0), arg(1))
         when "l"  then line_to(arg(0), arg(1))
         when "c"  then curve_to(arg(0), arg(1), arg(2), arg(3), arg(4), arg(5))
@@ -277,10 +282,19 @@ module PDF
         end
         if stroke
           r, g, b = @state.stroke
-          @canvas.stroke(@path, @state.line_width * @state.ctm.mean_scale, r, g, b)
+          scale = @state.ctm.mean_scale
+          dash = @state.dash.empty? ? nil : @state.dash.map { |d| d * scale }
+          @canvas.stroke(@path, @state.line_width * scale, r, g, b,
+            dash: dash, dash_phase: @state.dash_phase * scale)
         end
         apply_pending_clip
         end_path
+      end
+
+      # Opérateur `d` : motif de tireté `[longueurs] phase`.
+      private def set_dash : Nil
+        @state.dash = @last_array.compact_map { |tok| tok.kind == :num ? tok.num : nil }
+        @state.dash_phase = arg(0)
       end
 
       # Synchronise le détourage de la toile (boîte + masque) sur l'état.

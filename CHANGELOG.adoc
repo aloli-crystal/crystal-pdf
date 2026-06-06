@@ -7,6 +7,17 @@ All notable changes to pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v1.18.0 — 2026-06-06 — Rasterizer : dashed strokes and round joins/caps
+
+=== Added
+
+* **Dash patterns** — the `d` operator (dash array + phase) is honoured,
+  so dashed/dotted strokes render as dashes instead of solid lines. The
+  dash state runs continuously along each polyline.
+* **Round joins and caps** — thick strokes now draw a disc at each
+  vertex, filling the gaps that the per-segment quads left at corners
+  and giving rounded line ends.
+
 == v1.17.0 — 2026-06-06 — Rasterizer : exact (non-rectangular) clipping
 
 === Changed

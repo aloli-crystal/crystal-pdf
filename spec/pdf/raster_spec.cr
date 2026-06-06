@@ -181,6 +181,26 @@ describe "PDF::Raster — masque doux (/SMask)" do
   end
 end
 
+describe "PDF::Raster — traits tiretés (d)" do
+  it "rend un trait tireté (alternance plein/vide)" do
+    canvas = PDF::Raster::Canvas.new(400, 200)
+    base = PDF::Raster::Matrix.new(1.0, 0.0, 0.0, -1.0, 0.0, 200.0)
+    interp = PDF::Raster::Interpreter.new(canvas, base)
+    interp.run("[10 6] 0 d 6 w 0 0 0 RG 20 100 m 380 100 l S".to_slice)
+
+    # Le long du trait, on doit trouver de nombreuses transitions
+    # noir↔blanc (les tirets) — un trait plein n'en aurait que 2.
+    transitions = 0
+    prev = 255
+    (20..380).each do |x|
+      cur = (canvas.pixels[x, 100].r >> 8) < 128 ? 0 : 255
+      transitions += 1 if cur != prev
+      prev = cur
+    end
+    transitions.should be > 6
+  end
+end
+
 describe "PDF::Raster::Canvas#downsample" do
   it "moyenne les blocs (un noir + trois blancs → gris ~191)" do
     c = PDF::Raster::Canvas.new(2, 2)

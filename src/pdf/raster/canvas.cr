@@ -53,18 +53,26 @@ module PDF
         fill_subpaths(subpaths, color, even_odd, alpha)
       end
 
-      # Trace une polyligne (chemin ouvert ou fermé) avec une épaisseur
-      # donnée en pixels, approximée par un quadrilatère rempli par
-      # segment (jointures simples).
-      def stroke(subpaths : Array(SubPath), width : Float64, r : Float64, g : Float64, b : Float64, alpha : Float64 = 1.0) : Nil
+      # Trace une polyligne avec une épaisseur (pixels). Chaque segment
+      # est un quadrilatère rempli ; des disques aux sommets donnent des
+      # jointures et extrémités rondes (traits épais). `dash` (longueurs
+      # en pixels, alternance plein/vide) produit un trait tireté.
+      def stroke(subpaths : Array(SubPath), width : Float64, r : Float64, g : Float64, b : Float64, alpha : Float64 = 1.0, dash : Array(Float64)? = nil, dash_phase : Float64 = 0.0) : Nil
         color = rgba(r, g, b)
         half = {width, 1.0}.max / 2.0
+        dashed = dash && dash.size > 0 && dash.any? { |d| d > 0 }
+        round = half > 0.75
         subpaths.each do |sp|
           next if sp.size < 2
+          if dashed
+            stroke_dashed(sp, half, color, alpha, dash.not_nil!, dash_phase)
+            next
+          end
           (0...sp.size - 1).each do |i|
             quad = segment_quad(sp[i], sp[i + 1], half)
             fill_subpaths([quad], color, false, alpha)
           end
+          sp.each { |pt| fill_disc(pt[0], pt[1], half, color, alpha) } if round
         end
       end
 
@@ -237,6 +245,71 @@ module PDF
 
       private def mix(bg : UInt16, fg : UInt16, alpha : Float64) : UInt16
         (bg.to_f * (1.0 - alpha) + fg.to_f * alpha).round.to_u16
+      end
+
+      # Trace une polyligne tiretée : avance le long du chemin en
+      # alternant plein/vide selon le motif `dash` (longueurs en pixels),
+      # l'état du motif étant continu d'un segment à l'autre.
+      private def stroke_dashed(sp : SubPath, half : Float64, color : StumpyCore::RGBA, alpha : Float64, dash : Array(Float64), phase : Float64) : Nil
+        total = dash.sum
+        return if total <= 0
+        # Position initiale dans le cycle (phase).
+        idx = 0
+        rem = dash[0]
+        on = true
+        ph = phase % total
+        while ph > 0
+          if ph >= rem
+            ph -= rem
+            idx = (idx + 1) % dash.size
+            rem = dash[idx]
+            on = !on
+          else
+            rem -= ph
+            ph = 0.0
+          end
+        end
+
+        (0...sp.size - 1).each do |s|
+          x1, y1 = sp[s]
+          x2, y2 = sp[s + 1]
+          seg = Math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+          next if seg == 0
+          ux = (x2 - x1) / seg
+          uy = (y2 - y1) / seg
+          pos = 0.0
+          while pos < seg
+            take = Math.min(rem, seg - pos)
+            if on
+              a = {x1 + ux * pos, y1 + uy * pos}
+              b = {x1 + ux * (pos + take), y1 + uy * (pos + take)}
+              fill_subpaths([segment_quad(a, b, half)], color, false, alpha)
+            end
+            pos += take
+            rem -= take
+            if rem <= 1e-9
+              idx = (idx + 1) % dash.size
+              rem = dash[idx]
+              on = !on
+            end
+          end
+        end
+      end
+
+      # Remplit un disque (jointure/extrémité ronde) centré en (cx, cy).
+      private def fill_disc(cx : Float64, cy : Float64, radius : Float64, color : StumpyCore::RGBA, alpha : Float64) : Nil
+        r2 = radius * radius
+        y0 = (cy - radius).floor.to_i
+        y1 = (cy + radius).ceil.to_i
+        x0 = (cx - radius).floor.to_i
+        x1 = (cx + radius).ceil.to_i
+        (y0..y1).each do |py|
+          (x0..x1).each do |px|
+            dx = px + 0.5 - cx
+            dy = py + 0.5 - cy
+            put(px, py, color, alpha) if dx * dx + dy * dy <= r2
+          end
+        end
       end
 
       # Quadrilatère couvrant un segment épais (extrémités carrées).

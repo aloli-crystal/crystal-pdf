@@ -7,6 +7,19 @@ Toutes les évolutions notables de pdf sont consignées ici. Le
 format suit https://keepachangelog.com/fr/1.1.0/[Keep a Changelog] et
 le versionnage respecte https://semver.org/lang/fr/[SemVer].
 
+== v1.18.0 — 2026-06-06 — Rasterizer : traits tiretés et jointures/extrémités rondes
+
+=== Ajouté
+
+* **Motifs de tireté** — l'opérateur `d` (tableau de tirets + décalage)
+  est honoré : les traits tiretés/pointillés s'affichent en tirets au
+  lieu de lignes pleines. L'état du motif est continu le long de chaque
+  polyligne.
+* **Jointures et extrémités rondes** — les traits épais dessinent
+  désormais un disque à chaque sommet, comblant les trous que les
+  quadrilatères par segment laissaient aux angles et arrondissant les
+  bouts de ligne.
+
 == v1.17.0 — 2026-06-06 — Rasterizer : détourage exact (non rectangulaire)
 
 === Modifié
