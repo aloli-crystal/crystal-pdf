@@ -7,6 +7,28 @@ All notable changes to pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v1.16.0 — 2026-06-06 — Rasterizer : Type1/CFF font rendering (Type 2 charstrings)
+
+=== Added
+
+* **CFF / Type1C glyph rendering** — the rasterizer now draws text from
+  CFF font programs (`/FontFile3` : Type1C, CIDFontType0C, OpenType-CFF),
+  not just TrueType.
+  ** `Raster::CFFOutlines` — a Type 2 charstring interpreter (Adobe CFF
+     spec § 4.3) : move/line/curve operators, `hhcurveto`/`vvcurveto`/
+     `hvcurveto`/`vhcurveto`, flex operators, local/global subroutines
+     (with bias), hint skipping, and width extraction. `run_charstring`
+     is a parser-free entry point for testing.
+  ** `Raster::Font` now dispatches between TrueType (`Raster::Glyph`)
+     and CFF (`Raster::CFFOutlines`) backends, and maps code → GID for
+     simple CFF fonts via the CFF custom Encoding table (formats 0/1).
+
+=== Note
+
+* Still not rendered : bare Type1 PostScript fonts (`/FontFile`, without
+  CFF). Standard/Expert CFF encodings (non-subset simple fonts) fall
+  back to identity code → GID.
+
 == v1.15.0 — 2026-06-06 — Rasterizer : clipping (W/W*) and soft masks (/SMask)
 
 === Added
