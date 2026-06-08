@@ -136,7 +136,12 @@ module PDF
 
         page.save_graphics_state
         apply_styles(node)
-        page.rectangle(px, py, w * @x_scale, h * @y_scale)
+        # Le coin haut-gauche du rect SVG est en (px, py) (cf.
+        # svg_to_pdf). page.rectangle attend le coin BAS-gauche ; on
+        # descend donc de la hauteur. Sans ça, le rect était dessiné
+        # vers le haut depuis son sommet (décalé de sa hauteur), p.ex.
+        # un logo de page de garde finissait hors page.
+        page.rectangle(px, py - h * @y_scale, w * @x_scale, h * @y_scale)
         apply_fill_and_stroke(node)
         page.restore_graphics_state
       end

@@ -1,3 +1,19 @@
+== v1.20.1 — 2026-06-08
+
+=== Corrigé
+
+* **Rendu SVG : positionnement vertical des `<rect>`.** `draw_rect`
+  passait le coin HAUT-gauche du rectangle SVG (issu de
+  `svg_to_pdf`) comme coin BAS-gauche à `page.rectangle`. Le
+  rectangle était donc tracé vers le haut depuis son sommet,
+  décalé de sa propre hauteur — un logo SVG posé en haut d'une
+  page finissait hors page (invisible). Les points (texte, lignes,
+  courbes) n'étaient pas touchés ; seuls les `<rect>` l'étaient.
+  On descend désormais de la hauteur (`py - h * y_scale`) pour
+  obtenir le bon coin bas-gauche.
++
+  Les SVG composés de `<path>` (p. ex. les drapeaux country-flags)
+  ne sont pas concernés. 1027 specs verts.
 = Journal des modifications
 :toc: left
 :toc-title: Versions
