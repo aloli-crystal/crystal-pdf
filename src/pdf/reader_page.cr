@@ -66,6 +66,35 @@ module PDF
       @added_streams
     end
 
+    # Retourne l'angle de rotation déclaré pour la page
+    # (ISO 32000-1 § 14.8 — /Rotate), héritable depuis l'arbre
+    # /Pages. Valeurs autorisées : 0, 90, 180, 270 (modulo 360,
+    # normalisées dans [0, 360[). Une page sans /Rotate ni hérité
+    # retourne 0.
+    #
+    # Utile pour détecter les PDFs dont une page a été tournée par
+    # un viewer (Aperçu macOS, Acrobat) via le tag /Rotate plutôt
+    # qu'en réécrivant le contenu : un assemblage naïf laisserait
+    # la page à l'envers dans le PDF final. À combiner avec un
+    # `qpdf --flatten-rotation` côté caller pour cuire la rotation.
+    def rotate : Int32
+      val = @page_dict["Rotate"]?
+
+      # Héritage : remonter l'arbre /Pages si non trouvé localement.
+      unless val
+        if parent_ref = @page_dict["Parent"]?
+          parent = @reader.resolve(parent_ref)
+          if parent_dict = parent.as?(Objects::Dictionary)
+            val = parent_dict["Rotate"]?
+          end
+        end
+      end
+
+      val = @reader.resolve(val) if val
+      degrees = val.try(&.as?(Objects::Number)).try(&.to_i64.to_i32) || 0
+      ((degrees % 360) + 360) % 360
+    end
+
     # Retourne le dictionnaire de ressources de la page
     def resources : Objects::Dictionary
       res = @page_dict["Resources"]?

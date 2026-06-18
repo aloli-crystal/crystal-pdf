@@ -7,6 +7,20 @@ All notable changes to pdf are documented here. The format
 follows https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer].
 
+== v1.20.2 — 2026-06-16
+
+=== Added
+
+* `PDF::ReaderPage#rotate : Int32` reads the page's `/Rotate`
+  attribute (ISO 32000-1 § 14.8), inheriting through the
+  `/Pages` tree. Returns 0/90/180/270 (normalized to `[0, 360[`).
+  Lets callers detect PDFs whose pages have been turned by a
+  viewer (Preview.app, Acrobat) via the `/Rotate` tag rather
+  than by rewriting the page content — important downstream
+  for naive mergers that would otherwise drop the rotation
+  silently. Pair with `qpdf --flatten-rotation` to bake the
+  rotation before assembly.
+
 == v1.20.0 — 2026-06-06 — Rasterizer : shading-pattern fills (scn /Pattern)
 
 === Added

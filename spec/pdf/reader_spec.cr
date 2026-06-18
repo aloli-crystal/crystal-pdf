@@ -122,6 +122,65 @@ describe PDF::Reader do
     end
   end
 
+  describe "#rotate" do
+    it "retourne 0 pour une page sans /Rotate" do
+      reader = PDF::Reader.open(File.join(fixtures_dir, "single_page.pdf"))
+      reader.pages[0].rotate.should eq(0)
+    end
+
+    # Génère un PDF minimal A4 avec /Rotate posé sur l'unique page.
+    # Écrit en raw bytes pour avoir un offset xref fiable, sans
+    # dépendre du writer (qui pourrait sérialiser /Rotate dans un
+    # ordre / une forme variable).
+    write_rotated_pdf = ->(degrees : Int32, path : String) do
+      objs = [
+        "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+        "2 0 obj\n<< /Type /Pages /Count 1 /Kids [3 0 R] >>\nendobj\n",
+        "3 0 obj\n<< /Type /Page /Parent 2 0 R /Rotate #{degrees} " \
+        "/MediaBox [0 0 595 842] /Contents 4 0 R /Resources << >> >>\nendobj\n",
+        "4 0 obj\n<< /Length 0 >>\nstream\n\nendstream\nendobj\n",
+      ]
+      header = "%PDF-1.4\n%\xff\xff\xff\xff\n"
+      offsets = [0]
+      cursor = header.bytesize
+      objs.each do |obj|
+        offsets << cursor
+        cursor += obj.bytesize
+      end
+      xref_offset = cursor
+      xref = String.build do |s|
+        s << "xref\n0 #{objs.size + 1}\n"
+        s << "0000000000 65535 f \n"
+        offsets[1..].each { |off| s << "%010d 00000 n \n" % off }
+      end
+      trailer = "trailer\n<< /Size #{objs.size + 1} /Root 1 0 R >>\n" \
+                "startxref\n#{xref_offset}\n%%EOF\n"
+      File.write(path, header + objs.join + xref + trailer)
+    end
+
+    it "lit /Rotate posé directement sur la page" do
+      tmp = File.tempname("rotate_spec", ".pdf")
+      write_rotated_pdf.call(180, tmp)
+      begin
+        reader = PDF::Reader.open(tmp)
+        reader.pages[0].rotate.should eq(180)
+      ensure
+        File.delete(tmp) if File.exists?(tmp)
+      end
+    end
+
+    it "normalise les valeurs hors [0, 360[ (modulo 360)" do
+      tmp = File.tempname("rotate_spec_neg", ".pdf")
+      write_rotated_pdf.call(-90, tmp)
+      begin
+        reader = PDF::Reader.open(tmp)
+        reader.pages[0].rotate.should eq(270)
+      ensure
+        File.delete(tmp) if File.exists?(tmp)
+      end
+    end
+  end
+
   describe "ajout de contenu et sauvegarde" do
     it "ajoute un flux de contenu à une page" do
       reader = PDF::Reader.open(File.join(fixtures_dir, "single_page.pdf"))
