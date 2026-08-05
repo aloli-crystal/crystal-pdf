@@ -88,12 +88,21 @@ module PDF
         transform_val = node["transform"]?
 
         case tag
+        when "defs", "title", "desc", "metadata", "style"
+          # Skip non-renderable elements
+          return
+        end
+
+        # Element-level transforms must apply to every renderable branch
+        # below (not just <g>), otherwise a transform on e.g. a bare
+        # <rect> is silently dropped.
+        page.save_graphics_state
+        apply_transform(transform_val)
+
+        case tag
         when "g"
-          page.save_graphics_state
-          apply_transform(transform_val)
           apply_styles(node)
           node.children.each { |child| render_element(child) }
-          page.restore_graphics_state
         when "rect"
           draw_rect(node)
         when "circle"
@@ -112,16 +121,13 @@ module PDF
           draw_text(node)
         when "svg"
           # Nested SVG - process children
-          page.save_graphics_state
           node.children.each { |child| render_element(child) }
-          page.restore_graphics_state
-        when "defs", "title", "desc", "metadata", "style"
-          # Skip non-renderable elements
-
         else
           # Try to render children for unknown container elements
           node.children.each { |child| render_element(child) }
         end
+
+        page.restore_graphics_state
       end
 
       private def draw_rect(node : XML::Node) : Nil
